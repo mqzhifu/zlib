@@ -7,29 +7,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
-	"os"
 	"strings"
-	"time"
 )
 
-func GetJwtToken(secretKey string,appId int ,uid int ,username string)string{
+func CreateJwtToken(secretKey string,payload JwtDataPayload)string{
 	header := JwtDataHeader{
 		Alg: "HS256",
 		Typ:"JWT",
 	}
-	current := time.Now().Second()
-	ExpireTime := int(current) + (   2 * 60 * 60 )
-	payload := JwtDataPayload{
-		Id:uid,
-		Expire: ExpireTime,
-		ATime: current,
-		AppId: appId,
-		Username: username,
-	}
 
 	headerJson,_ := json.Marshal(header)
 	payloadJson ,_ := json.Marshal(payload)
-
 	//fmt.Println("json : ",string(headerJson),string(payloadJson))
 
 	base64HeaderJson := EncodeSegment(headerJson)
@@ -46,9 +34,14 @@ func GetJwtToken(secretKey string,appId int ,uid int ,username string)string{
 	base64Sign :=  EncodeSegment(sign)
 	//fmt.Println(  " base64Sign : " , base64Sign)
 	jwtString := base64HeaderPayload + "." + base64Sign
-	fmt.Println("myself : ",jwtString)
+	//fmt.Println("myself : ",jwtString)
 
 
+	return jwtString
+}
+
+//3方包创建一个TOKEN
+func JwtGoCreateToken(secretKey string,payload JwtDataPayload)string{
 	type jwtCustomClaims struct {
 		jwt.StandardClaims
 		Id 			int
@@ -65,60 +58,99 @@ func GetJwtToken(secretKey string,appId int ,uid int ,username string)string{
 		//StandardClaims: jwt.StandardClaims{
 		//	ExpiresAt: int64(time.Now().Add(time.Hour * 72).Unix()),
 		//},
-		Id:uid,
-		Expire: ExpireTime,
-		ATime: current,
-		AppId: appId,
-		Username: username,
+		Id:payload.Id,
+		Expire: payload.Expire,
+		ATime: payload.ATime,
+		AppId: payload.AppId,
+		Username: payload.Username,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, _ := token.SignedString([]byte(secretKey))
-	fmt.Println("jwt-go : ",tokenString)
-
-
-	myToken := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJJZCI6MiwiRXhwaXJlIjo3MjA5LCJBVGltZSI6OSwiQXBwSWQiOjEsIlVzZXJuYW1lIjoid2FuZyJ9.U57wFFeADbDdRj0MuEF0mNfSZ_JgD3wUEzGhRE02jOI"
-	rs,err := ParseToken(myToken,[]byte(secretKey))
-	fmt.Println("ParseToken : ",rs ,err)
-
-	myParseToken(myToken,secretKey)
-
-	return jwtString
+	return tokenString
 }
-func myParseToken(tokenStr string, SecretKey string){
-	if tokenStr == ""{
 
+func ParseJwtToken(secretKey string,tokenStr string)(data JwtData,err error){
+	CheckStrEmptyRs := CheckStrEmpty(tokenStr)
+	if CheckStrEmptyRs{
+		return data,NewCoder(500,"tokenStr is empty")
 	}
 	tokenStr = strings.Trim(tokenStr," ")
-	if tokenStr == ""{
-
-	}
-
 	tokenArr := strings.Split(tokenStr,".")
 	if len(tokenArr) != 3{
-
+		return data,NewCoder(501,"tokenStr Split by <.> != 3")
 	}
-	fmt.Println(tokenArr)
+
+	//fmt.Println(tokenArr)
 	headerBase64 := tokenArr[0]
-	headerJsonStr,err := DecodeSegment(headerBase64)
-	if err != nil{
-
-	}
-
-	if  len(headerJsonStr) == 0{
-
-	}
-
-	fmt.Println(string(headerJsonStr))
 	headerStruct := JwtDataHeader{}
-	//err := json.Unmarshal(headerJsonStr,&headerStruct)
-	//if err != nil{
-	//	fmt.Println("err")
-	//	os.Exit(-100)
-	//}
-	//payloadBase64 := tokenArr[1]
+	err = decodeJsonByBase64(headerBase64,&headerStruct)
+	if err != nil {
+		return data,err
+	}
+	fmt.Println("headerStruct ",headerStruct)
 
-	fmt.Println(headerStruct)
-	os.Exit(-100)
+	payloadBase64 := tokenArr[1]
+	payloadStruct := JwtDataPayload{}
+	err = decodeJsonByBase64(payloadBase64,&payloadStruct)
+	if err != nil {
+		return data,err
+	}
+	fmt.Println("payloadStruct  ",payloadStruct)
+
+	sign := tokenArr[2]
+
+	checkSign := checkJWTSign(headerStruct,payloadStruct,tokenArr,secretKey)
+	if !checkSign{
+		return data,NewCoder(511,"check sign is err")
+	}
+	data = JwtData{
+		header: headerStruct,
+		payload: payloadStruct,
+		sign: sign,
+	}
+
+	return data,nil
+}
+//此函数必须依附上面的函数，也就是把JSON都解到struct里，是一个正常的JSON结构体
+func checkJWTSign(headerStruct JwtDataHeader,payloadStruct JwtDataPayload,tokenArr []string,secretKey string)bool{
+	//MyPrint("checkJWTSign : ",tokenArr)
+
+	hasher := hmac.New(crypto.SHA256.New , []byte(secretKey))
+	hasher.Write([]byte(tokenArr[0]+ "." + tokenArr[1]))
+
+	sign := hasher.Sum(nil)
+	base64Sign :=  EncodeSegment(sign)
+	//MyPrint("checkJWTSign base64Sign : ",base64Sign)
+	if base64Sign != tokenArr[2]{
+		return false
+	}
+	//这里还要再严谨一下，把解出来的数据，再重新生成一下jwt token ,看看对不对
+	//不过，这里只是把新生成 的payload 传了进入 header 并没有验证
+	newToken := CreateJwtToken(secretKey,payloadStruct)
+	newTokenArr := strings.Split(newToken,".")
+	//fmt.Println(newTokenArr)
+	if tokenArr[2] != newTokenArr[2]{
+		return false
+	}
+	return true
+}
+
+func decodeJsonByBase64(base64Str string ,dataStruct interface{})error{
+	JsonStr,err := DecodeSegment(base64Str)
+	if err != nil{
+		return NewCoder(502,"decode base64 is err:"+err.Error())
+	}
+
+	if  len(JsonStr) == 0{
+		return NewCoder(502,"decode base64 len is 0 ")
+	}
+
+	err = json.Unmarshal(JsonStr,&dataStruct)
+	if err != nil{
+		return NewCoder(502,"Unmarshal json err"+err.Error())
+	}
+
+	return nil
 }
 
 func EncodeSegment(seg []byte) string {
@@ -143,11 +175,11 @@ func ParseToken(tokenSrt string, SecretKey []byte) (claims jwt.Claims, err error
 	return
 }
 
-//type JwtData struct {
-//	header 	JwtDataHeader
-//	payload	JwtDataPayload
-//	sign 	string
-//}
+type JwtData struct {
+	header 	JwtDataHeader
+	payload	JwtDataPayload
+	sign 	string
+}
 
 type JwtDataHeader struct {
 	Alg string `json:"alg"`

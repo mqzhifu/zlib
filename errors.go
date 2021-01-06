@@ -2,6 +2,7 @@ package zlib
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"fmt"
 	"path/filepath"
@@ -52,7 +53,12 @@ func caller(calldepth int, short bool) string {
 	return fmt.Sprintf("%s:%d", file, line)
 }
 //这个函数只是懒......
-func myPrint(a ...interface{}) (n int, err error) {
+func MyPrint(a ...interface{}) (n int, err error) {
 	return fmt.Println(a)
+}
+
+func ExitPrint(a ...interface{})   {
+	fmt.Println(a)
+	os.Exit(-100)
 }
 
