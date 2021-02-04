@@ -2,12 +2,19 @@ package zlib
 
 import (
 	"encoding/json"
-	"os"
-	"strings"
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
+
+const (
+	LOG_LEVEL_DEBUG = iota
+	LOG_LEVEL_INFO
+	LOG_LEVEL_OFF
+)
+
+var LogLevelFlag = LOG_LEVEL_OFF
 
 type ErrorCode struct {
 	Code  uint32
@@ -51,14 +58,5 @@ func caller(calldepth int, short bool) string {
 	}
 
 	return fmt.Sprintf("%s:%d", file, line)
-}
-//这个函数只是懒......
-func MyPrint(a ...interface{}) (n int, err error) {
-	return fmt.Println(a)
-}
-
-func ExitPrint(a ...interface{})   {
-	fmt.Println(a)
-	os.Exit(-100)
 }
 
