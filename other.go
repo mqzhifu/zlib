@@ -31,6 +31,13 @@ func GetRandIntNum(max int) int{
 	return rand.Intn(max)
 }
 
+func GetRandIntNumRange(min int ,max int) int{
+	rand.Seed(time.Now().UnixNano())
+	return min + rand.Intn(max-min)
+}
+
+
+
 func CheckStrEmpty(str string)bool{
 	if str == ""{
 		return true
@@ -42,6 +49,24 @@ func CheckStrEmpty(str string)bool{
 	return false
 }
 
+func checkFileIsExist(filename string) bool {
+	var exist = true
+	if _, err := os.Stat(filename);os.IsNotExist(err){
+		exist = false
+	}
+	return exist
+}
+
+func PathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
 
 func MapCovertArr( myMap map[int]int) (arr []int){
 	for _,v := range myMap {
@@ -181,6 +206,15 @@ func TypeConversion(value string, ntype string) (reflect.Value, error) {
 }
 //判断一个元素，在一个数组中的位置
 func ElementInArrIndex(arr []int ,element int )int{
+	for i:=0;i<len(arr);i++{
+		if arr[i] == element{
+			return i
+		}
+	}
+	return -1
+}
+
+func ElementStrInArrIndex(arr []string ,element string )int{
 	for i:=0;i<len(arr);i++{
 		if arr[i] == element{
 			return i

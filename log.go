@@ -2,7 +2,9 @@ package zlib
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strconv"
@@ -20,8 +22,6 @@ const (
 	LEVEL_WARNING	//128
 	LEVEL_NOTICE	//256
 )
-/*
-*/
 var levelContentPrefixes = map[int]string{
 	LEVEL_INFO: "INFO",
 	LEVEL_DEBUG: "DEBUG",
@@ -58,43 +58,85 @@ const(
 
 
 type Log struct {
-	OutFilePath  string
-	Level int
-	Target int
+	option LogOption
 }
+
+type LogOption struct {
+	OutFilePath 	string
+	OutFileName 	string
+	OutFileHashType	int
+	OutFileFd		*os.File
+	Level 			int
+	Target 			int
+}
+func NewLog( logOption LogOption)(log *Log ,errs error){
+	MyPrint("New log class ,OutFilePath : ",logOption.OutFilePath , " level : ",logOption.Level ," target : ",logOption.Target)
+
+	if logOption.OutFilePath == ""{
+		return nil,errors.New(" OutFilePath is empty ")
+	}
+
+	if logOption.Level == 0{
+		return nil,errors.New(" level is empty ")
+	}
+
+	if logOption.Target == 0 {
+		return nil,errors.New(" target is empty ")
+	}
+
+
+	log = new(Log)
+	log.option = logOption
+	//log.OutFilePath = OutFilePath
+	//log.Level = level
+	//log.Target = target
+
+	errs = log.checkOutFilePathPower(logOption.OutFilePath)
+	if errs != nil{
+		return nil,errs
+	}
+
+	log.option = logOption
+
+	if log.checkTargetIncludeByBit(OUT_TARGET_FILE){
+		if log.option.OutFileHashType == 0{//未开启hash
+			pathFile := log.GetPathFile()
+			fd, err  := os.OpenFile(pathFile, os.O_WRONLY | os.O_CREATE | os.O_APPEND , 0777)
+			if err != nil{
+				ExitPrint(" init log lib err ,  ",err.Error())
+			}
+			log.option.OutFileFd = fd
+		}
+	}
+
+	return log,nil
+}
+
 //permission
-func  (log *Log)  checkOutFilePathPower(path string){
+func  (log *Log)  checkOutFilePathPower(path string)error{
 	if path == ""{
-		ExitPrint("path is empty")
+		return errors.New(" checkOutFilePathPower : path is empty")
 	}
 
 	fd,e :=  os.Stat(path)
 	if e != nil{
-		ExitPrint("path error:",e.Error())
+		return errors.New(" checkOutFilePathPower : os.Stat : "+ e.Error())
 	}
 
 	if !fd.IsDir(){
-		ExitPrint("path is not a dir!")
+		return errors.New(" checkOutFilePathPower : path is not a dir ")
 	}
 	perm := fd.Mode().Perm().String()
+	MyPrint(perm,os.FileMode(0755).String())
 	//log.Debug(fd.Mode(),fd.Mode().Perm())
-	if perm != os.FileMode(0777).String(){
-		ExitPrint("path permission 0777")
+	if perm < os.FileMode(0755).String(){
+		return errors.New(" checkOutFilePathPower :path permission 0777 ")
 	}
+	return nil
 		//ExitPrint(uint32(fd.Mode().Perm()))
 }
 
-func NewLog(OutFilePath string,level int,target int)*Log{
-	log := new(Log)
-	log.OutFilePath = OutFilePath
-	log.Level = level
-	log.Target = target
 
-
-	log.checkOutFilePathPower(OutFilePath)
-
-	return log
-}
 
 func (log *Log) Info(content ...interface{}){
 	log.Out(LEVEL_INFO,content)
@@ -126,9 +168,14 @@ func (log *Log) OutScreen(a ...interface{}){
 	newlist := append(a[:0], a[(0+1):]...)
 	fmt.Println(newlist...)
 }
-
+func (log *Log) GetPathFile()string{
+	return log.option.OutFilePath + "/" + log.option.OutFileName
+}
 func (log *Log) OutFile(content string){
-
+	_, err := io.WriteString(log.option.OutFileFd, content)
+	if err != nil{
+		log.Error("OutFile io.WriteString : ",err.Error())
+	}
 }
 
 func (log *Log)getHeaderContentStr()string{
@@ -142,14 +189,14 @@ func (log *Log)getHeaderContentStr()string{
 }
 
 func (log *Log) checkTargetIncludeByBit(flag int)bool{
-	if log.Target & flag == flag {
+	if log.option.Target & flag == flag {
 		return true
 	}
 	return false
 }
 
 func (log *Log) checkLevelIncludeByBit(level int)bool{
-	if log.Level & level == level {
+	if log.option.Level & level == level {
 			return true
 	}
 	return false

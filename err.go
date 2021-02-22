@@ -35,7 +35,7 @@ func NewErr(log *Log,container []string)*Err{
 		row := strings.Split(v,",")
 		err.setOneContainerElement(Atoi(row[0]),row[1],row[2])
 	}
-
+	//定义一个公共错误码，当用户传入一个不存在 的CODE里，报错
 	errInfo :=ErrInfo {
 		Code: CODE_NOT_EXIST,
 		Msg: "code not found",
