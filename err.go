@@ -43,7 +43,6 @@ func NewErr(log *Log,container []string)*Err{
 	}
 
 	err.container[CODE_NOT_EXIST] = errInfo
-
 	err.log = log
 
 	return err

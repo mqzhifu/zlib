@@ -37,6 +37,7 @@ func (service *Service)RegThird( ){
 	allServiceList := service.etcd.GetListByPrefix(service.option.Prefix)
 	if len(allServiceList) == 0{
 		service.option.Log.Notice( " allServiceList is empty !")
+		return
 	}
 
 	serviceListMap := make(map[string][]string)
@@ -53,7 +54,10 @@ func (service *Service)RegThird( ){
 //注册自己的服务
 func (service *Service)RegOne(serviceName string,ipPort string){
 	now := GetNowTimeSecondToInt()
-	putResponse := service.etcd.PutOne( service.option.Prefix +"/"+serviceName +"/"+ipPort , strconv.Itoa(now))
+	putResponse,err := service.etcd.PutOne( service.option.Prefix +"/"+serviceName +"/"+ipPort , strconv.Itoa(now))
+	if err != nil{
+		ExitPrint("service.etcd.PutOne err ",err.Error())
+	}
 	service.option.Log.Info("etcd put one ",putResponse.Header)
 }
 

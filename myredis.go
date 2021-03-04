@@ -51,7 +51,12 @@ func NewRedisConnPool(redisOption RedisOption)(*MyRedis,error){
 	}
 	myRedis.option = redisOption
 	myRedis.connPool = myRedisPool
-	return myRedis,nil
+	//a := myRedis.connPool.Stats()
+	//fmt.Printf("%+v",a)
+	//ExitPrint(a)
+	//testConn := myRedisPool.Get()
+	_,err :=myRedis.RedisDo("ping")
+	return myRedis,err
 }
 
 

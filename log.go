@@ -70,7 +70,7 @@ type LogOption struct {
 	Target 			int
 }
 func NewLog( logOption LogOption)(log *Log ,errs error){
-	MyPrint("New log class ,OutFilePath : ",logOption.OutFilePath , " level : ",logOption.Level ," target : ",logOption.Target)
+	//MyPrint("New log class ,OutFilePath : ",logOption.OutFilePath , " level : ",logOption.Level ," target : ",logOption.Target)
 
 	if logOption.OutFilePath == ""{
 		return nil,errors.New(" OutFilePath is empty ")
@@ -84,12 +84,8 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 		return nil,errors.New(" target is empty ")
 	}
 
-
 	log = new(Log)
 	log.option = logOption
-	//log.OutFilePath = OutFilePath
-	//log.Level = level
-	//log.Target = target
 
 	errs = log.checkOutFilePathPower(logOption.OutFilePath)
 	if errs != nil{
@@ -103,11 +99,13 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 			pathFile := log.GetPathFile()
 			fd, err  := os.OpenFile(pathFile, os.O_WRONLY | os.O_CREATE | os.O_APPEND , 0777)
 			if err != nil{
-				ExitPrint(" init log lib err ,  ",err.Error())
+				return nil,errors.New(" log out file , OpenFile :  " + err.Error())
 			}
 			log.option.OutFileFd = fd
 		}
 	}
+	msg := "NewLogClass , OutFilePath : "+logOption.OutFilePath +" level : " + strconv.Itoa(logOption.Level) +" target : "+ strconv.Itoa(logOption.Target)
+	log.Debug(msg)
 
 	return log,nil
 }
@@ -115,28 +113,25 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 //permission
 func  (log *Log)  checkOutFilePathPower(path string)error{
 	if path == ""{
-		return errors.New(" checkOutFilePathPower : path is empty")
+		return errors.New(" checkOutFilePathPower ("+path+") : path is empty")
 	}
 
 	fd,e :=  os.Stat(path)
 	if e != nil{
-		return errors.New(" checkOutFilePathPower : os.Stat : "+ e.Error())
+		return errors.New(" checkOutFilePathPower ("+path+"): os.Stat : "+ e.Error())
 	}
 
 	if !fd.IsDir(){
-		return errors.New(" checkOutFilePathPower : path is not a dir ")
+		return errors.New(" checkOutFilePathPower ("+path+"): path is not a dir ")
 	}
 	perm := fd.Mode().Perm().String()
-	MyPrint(perm,os.FileMode(0755).String())
+	//MyPrint(perm,os.FileMode(0755).String())
 	//log.Debug(fd.Mode(),fd.Mode().Perm())
 	if perm < os.FileMode(0755).String(){
-		return errors.New(" checkOutFilePathPower :path permission 0777 ")
+		return errors.New(" checkOutFilePathPower ("+path+"):path permission 0777 ")
 	}
 	return nil
-		//ExitPrint(uint32(fd.Mode().Perm()))
 }
-
-
 
 func (log *Log) Info(content ...interface{}){
 	log.Out(LEVEL_INFO,content)
@@ -154,6 +149,10 @@ func (log *Log) Notice(content ...interface{}){
 	log.Out(LEVEL_NOTICE,content...)
 }
 
+func (log *Log) Warning(content ...interface{}){
+	log.Out(LEVEL_WARNING,content...)
+}
+
 func (log *Log) OutScreen(a ...interface{}){
 	if a[0] == "[INFO]"{
 		fmt.Printf("%c[1;40;33m%s%c[0m", 0x1B, a[0], 0x1B)
@@ -161,6 +160,8 @@ func (log *Log) OutScreen(a ...interface{}){
 		fmt.Printf("%c[1;40;31m%s%c[0m", 0x1B, a[0], 0x1B)
 	}else if a[0] == "[NOTIC]" {
 		fmt.Printf("%c[1;40;34m%s%c[0m", 0x1B, a[0], 0x1B)
+	}else if a[0] == "[WARNI]" {
+		fmt.Printf("%c[1;40;35m%s%c[0m", 0x1B, a[0], 0x1B)
 	}else{
 		fmt.Printf("%c[1;40;32m%s%c[0m", 0x1B, a[0], 0x1B)
 	}
@@ -176,6 +177,14 @@ func (log *Log) OutFile(content string){
 	if err != nil{
 		log.Error("OutFile io.WriteString : ",err.Error())
 	}
+}
+
+func (log *Log) CloseFileFd()error{
+	if !log.checkTargetIncludeByBit(OUT_TARGET_FILE){
+		return errors.New("checkTargetIncludeByBit OUT_TARGET_FILE :false")
+	}
+	err := log.option.OutFileFd.Close()
+	return err
 }
 
 func (log *Log)getHeaderContentStr()string{

@@ -105,15 +105,15 @@ func (myEtcd *MyEtcd)GetListByPrefix(key string)(list map[string]string){
 	//获取值
 	ctx, cancelFunc := context.WithTimeout(rootContext, time.Duration(2)*time.Second)
 	response, err := kvc.Get(ctx, key,clientv3.WithPrefix())
+	defer cancelFunc()
 	//myEtcd.option.Log.Debug(" ",response, err)
 	if err != nil {
 		myEtcd.option.Log.Notice("client Get err : ",err.Error())
 		return list
 	}
-	cancelFunc()
 
 	if response.Count == 0{
-		return nil
+		return list
 	}
 
 	kvs := response.Kvs
@@ -178,14 +178,14 @@ func (myEtcd *MyEtcd)GetOneValue(key string)string{
 	return value
 }
 
-func (myEtcd *MyEtcd) PutOne(k string, v string)*clientv3.PutResponse{
+func (myEtcd *MyEtcd) PutOne(k string, v string)(putResponse *clientv3.PutResponse,errs error){
 	myEtcd.option.Log.Info(" etcd PutOne: ",k , v)
 	rootContext := context.Background()
 	kvc := clientv3.NewKV(myEtcd.cli)
 	//获取值
 	ctx, cancelFunc := context.WithTimeout(rootContext, time.Duration(2)*time.Second)
 	defer cancelFunc()
-	putResponse, errs := kvc.Put(ctx, k,v)
+	putResponse, errs = kvc.Put(ctx, k,v)
 
 	if errs != nil {
 		myEtcd.option.Log.Error("RegOneService : ",errs.Error())
@@ -200,7 +200,15 @@ func (myEtcd *MyEtcd) PutOne(k string, v string)*clientv3.PutResponse{
 			myEtcd.option.Log.Error("bad cluster endpoints, which are not etcd servers: %v", errs.Error())
 		}
 	}
+	myEtcd.option.Log.Info("RegOneService success",putResponse.Header,putResponse.PrevKv)
+	return putResponse, errs
+}
 
-	MyPrint("RegOneService success",putResponse.Header,putResponse.PrevKv)
-	return putResponse
+func  (myEtcd *MyEtcd)Watch(key string) <-chan clientv3.WatchResponse {
+	myEtcd.option.Log.Notice("etcd new watch :",key)
+	//<-chan WatchResponse
+	watchChan  := myEtcd.cli.Watch(context.Background(),key,clientv3.WithPrefix())
+	//MyPrint("return watchChan")
+	return watchChan
+	//rch := cli.Watch(context.Background(), "/xi")
 }

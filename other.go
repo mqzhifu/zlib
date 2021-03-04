@@ -139,9 +139,23 @@ func Atoi(str string)int{
 	return num
 }
 
-func MapCovertStruct(inMap map[string]interface{},outStruct interface{})interface{}{
-	setFiledValue := func(	outStruct interface{},name string , v interface{}) {
+func StrFirstToUpper(str string) string {
+	if len(str) < 1 {
+		return str
+	}
+	strArry := []rune(str)
+	if strArry[0] >= 97 && strArry[0] <= 122  {
+		strArry[0] = strArry[0] - 32
+	}
+	return string(strArry)
+}
 
+func MapCovertStruct(inMap map[string]interface{},outStruct interface{})interface{}{
+	fmt.Printf("%+v",inMap)
+	fmt.Printf("%+v",outStruct)
+
+	setFiledValue := func(	outStruct interface{},name string , v interface{}) {
+		MyPrint(name)
 		structValue := reflect.ValueOf(outStruct).Elem()
 		structFieldValue := structValue.FieldByName(name)
 
