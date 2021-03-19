@@ -205,6 +205,7 @@ func (log *Log) checkTargetIncludeByBit(flag int)bool{
 }
 
 func (log *Log) checkLevelIncludeByBit(level int)bool{
+	//MyPrint(log.option.Level,level)
 	if log.option.Level & level == level {
 			return true
 	}

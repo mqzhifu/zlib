@@ -18,40 +18,19 @@ type ResponseMsgST struct {
 type MyEtcd struct {
 	cli *clientv3.Client
 	option EtcdOption
+	AppConflist map[string]string
 }
 
 type EtcdOption struct {
+	AppName string
+	AppENV	string
 	FindEtcdUrl		string
 	LinkAddressList	[]string
 	Log *Log
 }
 
-
-func getEtcdHostPort(etcdOption EtcdOption)( []byte,error){
-	//configCenter = configcenter.NewConfiger(10,2,10,"ini")
-	//configCenter.StartLoading("/data/www/golang/src/configcenter")
-	//systemConfigStr,_ := configCenter.Search("system")
-
-	//systemConfig := make(map[string]map[string]map[string]interface{})
-	//json.Unmarshal([]byte(systemConfigStr),&systemConfig)
-	//fmt.Printf("%+v",systemConfig)
-	//zlib.ExitPrint(systemConfig,errs)
-	//etcdConfigStr := systemConfig["system"]["groups"]["list"]
-
-	//url := "http://39.106.65.76:1234/system/etcd/cluster1/list/"
-	//etcdOption.Log.Info("getEtcdHostPort : ",etcdOption.FindEtcdUrl))
-	resp, errs := http.Get(etcdOption.FindEtcdUrl)
-	etcdOption.Log.Info(" get etcd config ip:port list : ",etcdOption.FindEtcdUrl,errs)
-	if errs != nil{
-		return nil,errs
-	}
-	htmlContentJson,_ := ioutil.ReadAll(resp.Body)
-	return htmlContentJson,errs
-}
-
 func NewMyEtcdSdk(etcdOption EtcdOption)(myEtcd *MyEtcd,errs error){
 	myEtcd = new (MyEtcd)
-
 	htmlContentJson ,errs := getEtcdHostPort(etcdOption)
 	if errs != nil {
 		return nil,errors.New("http request err :" + errs.Error())
@@ -70,36 +49,81 @@ func NewMyEtcdSdk(etcdOption EtcdOption)(myEtcd *MyEtcd,errs error){
 	if len(etcdConfig) == 0 {
 		return nil,errors.New("http request err : etcdConfig is empty ")
 	}
-	etcdOption.Log.Info("etcdConfig : ", etcdConfig)
+	etcdOption.Log.Info("etcdConfig ip list : ", etcdConfig)
 	etcdOption.LinkAddressList = etcdConfig
 
 	cli, errs := clientv3.New(clientv3.Config{
 		Endpoints:   etcdConfig,
 		DialTimeout: 5 * time.Second,
 	})
-	etcdOption.Log.Info("link etcd :",etcdConfig)
+	//etcdOption.Log.Info("link etcd :",etcdConfig)
 	if errs != nil {
 		return nil,errors.New("clientv3.New error :  " + errs.Error())
 	}
 	myEtcd.cli = cli
-
 	myEtcd.option = etcdOption
 
+	myEtcd.iniAppConf()
 	return myEtcd,nil
 }
+//寻找etcd host ip 列表
+func getEtcdHostPort(etcdOption EtcdOption)( []byte,error){
+	//configCenter = configcenter.NewConfiger(10,2,10,"ini")
+	//configCenter.StartLoading("/data/www/golang/src/configcenter")
+	//systemConfigStr,_ := configCenter.Search("system")
 
-//oneMsg mvccpb.KeyValue
-//"github.com/coreos/etcd/mvcc/mvccpb"
-//type MyEtcdGetOneMsg struct {
-//	Key				string
-//	Create_revision	int
-//	Mod_revision 	int
-//	Version			int
-//	Value			string
-//}
+	//systemConfig := make(map[string]map[string]map[string]interface{})
+	//json.Unmarshal([]byte(systemConfigStr),&systemConfig)
+	//fmt.Printf("%+v",systemConfig)
+	//zlib.ExitPrint(systemConfig,errs)
+	//etcdConfigStr := systemConfig["system"]["groups"]["list"]
+
+	//url := "http://39.106.65.76:1234/system/etcd/cluster1/list/"
+	etcdOption.Log.Info("getEtcdHostPort By ",etcdOption.FindEtcdUrl)
+	resp, errs := http.Get(etcdOption.FindEtcdUrl)
+	//etcdOption.Log.Info(" get etcd config ip:port list : ",etcdOption.FindEtcdUrl,errs)
+	if errs != nil{
+		return nil,errs
+	}
+	htmlContentJson,_ := ioutil.ReadAll(resp.Body)
+	return htmlContentJson,errs
+}
+//申请一个X秒TTL的租约
+func (myEtcd *MyEtcd)NewLeaseGrand(ctx context.Context ,ttl int64,autoKeepAlive int)(clientv3.LeaseID,error){
+	//创建一个租约实体
+	lease :=  clientv3.NewLease(myEtcd.cli)
+	//申请一个60秒的 租约 实体
+	leaseGrant, err := lease.Grant(ctx, ttl)
+	if  err != nil {
+		myEtcd.option.Log.Error("lease.Grant err :",err.Error())
+		return 0,err
+	}
+	if autoKeepAlive == 1{
+		leaseKeepAliveResponse,err :=lease.KeepAlive(ctx,leaseGrant.ID)
+		if err !=nil{
+			myEtcd.option.Log.Error("lease.KeepAlive err :",err.Error(),leaseKeepAliveResponse)
+			return 0,err
+		}
+	}
+	myEtcd.option.Log.Info("create New Lease and Grand ,  ttl :",ttl, " id : ",leaseGrant.ID)
+	return leaseGrant.ID,nil
+}
+//往一个租约里写入内容
+func (myEtcd *MyEtcd)putLease(ctx context.Context,leaseId clientv3.LeaseID,k string,v string)(putResponse *clientv3.PutResponse,err error){
+	//创建一个KV 容器
+	kv := clientv3.KV(myEtcd.cli)
+	myEtcd.option.Log.Info("putLease k:",k," v:",v)
+	putResponse, err = kv.Put(ctx, k, v, clientv3.WithLease(leaseId))
+	//myEtcd.option.Log.Info("putLease (",leaseId,"): ",putResponse, err)
+	if err != nil{
+		return putResponse,err
+	}
+
+	return putResponse,nil
+}
 
 func (myEtcd *MyEtcd)GetListByPrefix(key string)(list map[string]string){
-	myEtcd.option.Log.Info(" etcd GetListByPrefix , ",key ," : ")
+	//myEtcd.option.Log.Info(" etcd GetListByPrefix , ",key ," : ")
 	rootContext := context.Background()
 	kvc := clientv3.NewKV(myEtcd.cli)
 	//获取值
@@ -122,6 +146,7 @@ func (myEtcd *MyEtcd)GetListByPrefix(key string)(list map[string]string){
 		//MyPrint(string(v.Key),string(v.Value))
 		list[string(v.Key)] =  string(v.Value)
 	}
+	//MyPrint(list)
 	return list
 }
 
@@ -177,7 +202,9 @@ func (myEtcd *MyEtcd)GetOneValue(key string)string{
 	//os.Exit(-333)
 	return value
 }
-
+func (myEtcd *MyEtcd)SetLog(log *Log){
+	myEtcd.option.Log = log
+}
 func (myEtcd *MyEtcd) PutOne(k string, v string)(putResponse *clientv3.PutResponse,errs error){
 	myEtcd.option.Log.Info(" etcd PutOne: ",k , v)
 	rootContext := context.Background()
@@ -205,10 +232,36 @@ func (myEtcd *MyEtcd) PutOne(k string, v string)(putResponse *clientv3.PutRespon
 }
 
 func  (myEtcd *MyEtcd)Watch(key string) <-chan clientv3.WatchResponse {
-	myEtcd.option.Log.Notice("etcd new watch :",key)
-	//<-chan WatchResponse
-	watchChan  := myEtcd.cli.Watch(context.Background(),key,clientv3.WithPrefix())
+	myEtcd.option.Log.Notice("etcd create new watch :",key)
+	watchChan  := myEtcd.cli.Watch(context.TODO(),key,clientv3.WithPrefix())
 	//MyPrint("return watchChan")
 	return watchChan
 	//rch := cli.Watch(context.Background(), "/xi")
+}
+
+func  (myEtcd *MyEtcd)getConfRootPrefix()string{
+	rootPath := "/"+myEtcd.option.AppName + "/"+  myEtcd.option.AppENV + "/"
+	return rootPath
+}
+
+func  (myEtcd *MyEtcd)iniAppConf() {
+	myEtcd.option.Log.Info("etcd iniAppConf : ")
+	confListEtcd := myEtcd.GetListByPrefix(myEtcd.getConfRootPrefix())
+	if len(confListEtcd) == 0{
+		return
+	}
+	confList := make(map[string]string)
+	for k,v := range confListEtcd{
+		str := strings.Replace(k,myEtcd.getConfRootPrefix(),"",-1)
+		//serviceArr := strings.Split(str,"/")
+		myEtcd.option.Log.Info("conf " , str,v)
+		confList[str] = v
+	}
+	//ExitPrint(confList)
+	myEtcd.AppConflist = confList
+}
+
+func  (myEtcd *MyEtcd)GetAppConfByKey(key string)(str string){
+	val := myEtcd.AppConflist[key]
+	return val
 }

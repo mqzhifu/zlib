@@ -37,7 +37,7 @@ func NewRedisConnPool(redisOption RedisOption)(*MyRedis,error){
 	myRedisPool  := &redis.Pool{
 		// 从配置文件获取maxidle以及maxactive，取不到则用后面的默认值
 		MaxIdle:     2,
-		MaxActive:   20,
+		MaxActive:   200,
 		IdleTimeout: 180 * time.Second,
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", redisOption.Host+":"+redisOption.Port)
@@ -48,24 +48,61 @@ func NewRedisConnPool(redisOption RedisOption)(*MyRedis,error){
 			c.Do("SELECT", 0)
 			return c, nil
 		},
+		Wait: true,//如果获取不到，即阻塞
 	}
 	myRedis.option = redisOption
 	myRedis.connPool = myRedisPool
-	//a := myRedis.connPool.Stats()
-	//fmt.Printf("%+v",a)
-	//ExitPrint(a)
-	//testConn := myRedisPool.Get()
+	redisOption.Log.Info("test redis conn fd : ping ")
 	_,err :=myRedis.RedisDo("ping")
 	return myRedis,err
 }
 
+func  (myRedis *MyRedis)GetNewConnFromPool()redis.Conn{
+	myRedis.option.Log.Debug("redis :get new conn FD from pool.")
+	conn := myRedis.connPool.Get()
+	return conn
+}
+//指定一个 sock fd
+func  (myRedis *MyRedis)ConnDo(conn redis.Conn,commandName string, args ...interface{})(reply interface{}, error error){
+	myRedis.option.Log.Debug("[redis]connDo  :",commandName,args)
+	res,error :=conn.Do(commandName,args...)
+	if error != nil{
+		myRedis.option.Log.Notice("redis err :",error.Error())
+		return nil, error
+	}
+	return res,error
+}
+func  (myRedis *MyRedis)Exec(conn redis.Conn)(reply interface{}, error error){
+	rs,err := myRedis.ConnDo(conn,"exec")
+	myRedis.option.Log.Info("redis : exec , rs : ",rs,"err:",err)
+	if err != nil{
+		myRedis.option.Log.Error("transaction failed : ",err)
+	}
+	return rs,err
+}
+func  (myRedis *MyRedis)Multi(conn redis.Conn)(reply interface{}, error error){
+	myRedis.option.Log.Debug("[redis]Multi  ")
+	return myRedis.Send(conn,"Multi")
+}
+
+func  (myRedis *MyRedis)Send(conn redis.Conn,commandName string, args ...interface{})(reply interface{}, error error){
+	err := conn.Send(commandName,args...)
+	myRedis.option.Log.Debug("[redis]Send : ",commandName , " err : ",err)
+	return reply,err
+}
+
+//func  (myRedis *MyRedis)Exec(conn redis.Conn)(reply interface{}, error error){
+//	myRedis.option.Log.Debug("[redis]Exec  ")
+//	return myRedis.ConnDo(conn,"EXEC")
+//}
 
 
 func  (myRedis *MyRedis)RedisDo(commandName string, args ...interface{})(reply interface{}, error error){
 	myRedis.option.Log.Debug("[redis]redisDo init:",commandName,args)
-	conn := myRedis.connPool.Get()
-	res,error := conn.Do(commandName,args... )
+	conn := myRedis.GetNewConnFromPool()
 	defer conn.Close()
+	res,error := conn.Do(commandName,args... )
+
 	//res,error := myRedis.Conn.Do(commandName,args... )
 	if error != nil{
 		myRedis.option.Log.Notice("redis err :",error.Error())

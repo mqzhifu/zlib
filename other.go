@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"reflect"
 	"strconv"
@@ -19,25 +20,23 @@ func MyPrint(a ...interface{}) (n int, err error) {
 	}
 	return
 }
-
+//debug 调试使用
 func ExitPrint(a ...interface{})   {
 	fmt.Println(a)
 	fmt.Println("ExitPrint...22")
 	os.Exit(-22)
 }
-
+//获取一个随机整数
 func GetRandIntNum(max int) int{
 	rand.Seed(time.Now().UnixNano())
 	return rand.Intn(max)
 }
-
+//获取一个随机整数 范围
 func GetRandIntNumRange(min int ,max int) int{
 	rand.Seed(time.Now().UnixNano())
 	return min + rand.Intn(max-min)
 }
-
-
-
+//判断一个字符串是否为空，包括  空格
 func CheckStrEmpty(str string)bool{
 	if str == ""{
 		return true
@@ -48,7 +47,7 @@ func CheckStrEmpty(str string)bool{
 	}
 	return false
 }
-
+//检查一个文件是否已存在
 func checkFileIsExist(filename string) bool {
 	var exist = true
 	if _, err := os.Stat(filename);os.IsNotExist(err){
@@ -111,7 +110,6 @@ func CheckMap2IntIsEmpty(hashMap map[int]map[int]int)bool{
 
 }
 
-
 func ArrCoverStr(arr []int,IdsSeparation string)string{
 	if len(arr) == 0{
 		ExitPrint("ArrCoverStr arr len = 0")
@@ -138,7 +136,7 @@ func Atoi(str string)int{
 	num, _ := strconv.Atoi(str)
 	return num
 }
-
+//将字符串的首字母转大写
 func StrFirstToUpper(str string) string {
 	if len(str) < 1 {
 		return str
@@ -256,3 +254,70 @@ func StringToFloat(str string)float32{
 	number  := float32(v1)
 	return number
 }
+var GoRoutineList = make( map[string]int )
+func AddRoutineList(name string){
+	GoRoutineList[name] = GetNowTimeSecondToInt()
+}
+func GetLocalIp()(ip string,err error){
+	netInterfaces, err := net.Interfaces()
+	//MyPrint(netInterfaces, err)
+	if err != nil {
+		return ip,errors.New("net.Interfaces failed, err:" +  err.Error())
+	}
+
+	for i := 0; i < len(netInterfaces); i++ {
+		if (netInterfaces[i].Flags & net.FlagUp) != 0 {
+			addrs, _ := netInterfaces[i].Addrs()
+
+			for _, address := range addrs {
+				if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+					if ipnet.IP.To4() != nil {
+						return ipnet.IP.String(),nil
+					}
+				}
+			}
+		}
+	}
+
+	return ip,nil
+}
+//在一个：一维数组中，找寻最大数
+func FindMaxNumInArrFloat32(arr []float32  )float32{
+	number := arr[0]
+	for _,v := range arr{
+		if v > number{
+			number = v
+		}
+	}
+	return number
+}
+
+//在一个：一维数组中，找寻最小数
+func FindMinNumInArrFloat32(arr []float32  )float32{
+	number := arr[0]
+	for _,v := range arr{
+		if v < number{
+			number = v
+		}
+	}
+	return number
+}
+//4舍5入，保留2位小数
+//func round(x float32)string{
+//	numberStr := FloatToString(x,4)
+//	numberStrSplit :=  strings.Split(numberStr,".")
+//	if len(numberStrSplit) == 1{
+//		return numberStrSplit[0]
+//	}
+//	numberLittleStrByte := []byte(numberStrSplit[1])
+//	numberLittle := Atoi(numberStrSplit[1])
+//	if len(numberLittleStrByte) == 4{//4位小数
+//		three := numberLittleStrByte[0] + numberLittleStrByte[1] + numberLittleStrByte[2]
+//		if strByte[4] >= 5{
+//			three = Atoi(three) + 1
+//		}
+//	}else{//3位小数
+//
+//	}
+//
+//}

@@ -2,6 +2,7 @@ package zlib
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
@@ -47,9 +48,36 @@ func (service *Service)RegThird( ){
 		serviceArr := strings.Split(str,"/")
 		serviceListMap[serviceArr[1]] = append(serviceListMap[serviceArr[1]], serviceArr[2])
 	}
+	service.option.Log.Info("RegThird:",serviceListMap)
 
 	service.list = serviceListMap
-	service.option.Log.Debug(serviceListMap)
+	//service.option.Log.Debug(serviceListMap)
+	AddRoutineList("WatchThridService")
+	go service.WatchThridService()
+}
+func (service *Service)WatchThridService(){
+	watchChann := service.etcd.Watch(service.option.Prefix)
+	prefix := "third service watching receive , "
+	//service.option.Log.Notice(prefix , " , new key : ",service.option.Prefix)
+	//watchChann := myetcd.Watch("/testmatch")
+	for wresp := range watchChann{
+		for _, ev := range wresp.Events{
+			action := ev.Type.String()
+			key := string(ev.Kv.Key)
+			val := string(ev.Kv.Value)
+
+			service.option.Log.Warning(prefix , " chan has event : ",action)
+			service.option.Log.Warning(prefix , " key : ",key)
+			service.option.Log.Warning(prefix , " val : ",val)
+			//zlib.MyPrint(ev.Type.String(), string(ev.Kv.Key), string(ev.Kv.Value))
+			//fmt.Printf("%s %q:%q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+
+			//matchCode := strings.Replace(key,RuleEtcdConfigPrefix,"",-1)
+			//matchCode = strings.Trim(matchCode," ")
+			//matchCode = strings.Trim(matchCode,"/")
+			//mylog.Warning(prefix , " matchCode : ",matchCode)
+		}
+	}
 }
 //注册自己的服务
 func (service *Service)RegOne(serviceName string,ipPort string){
@@ -63,6 +91,26 @@ func (service *Service)RegOne(serviceName string,ipPort string){
 
 func (service *Service)balanceHost(list []string)string{
 	return list[0]
+}
+//注册自己的服务
+func (service *Service)RegOneDynamic(serviceName string,ipPort string)error{
+	ctx,_  := context.WithCancel(context.Background())
+	leaseGrantId ,err := service.etcd.NewLeaseGrand(ctx,60,1)
+	//service.option.Log.Debug("leaseGrantId : ",leaseGrantId ,err)
+	if err != nil{
+		//cancel()
+		return err
+	}
+	now := GetNowTimeSecondToInt()
+	//putResponse,err := service.etcd.PutOne( service.option.Prefix +"/"+serviceName +"/"+ipPort , strconv.Itoa(now))
+	key := service.option.Prefix +"/"+serviceName +"/"+ipPort
+	val := strconv.Itoa(now)
+	putResponse,err := service.etcd.putLease(ctx,leaseGrantId,key,val)
+	if err != nil{
+		ExitPrint("service.etcd.PutOne err ",err.Error(),putResponse)
+	}
+
+	return nil
 }
 
 
