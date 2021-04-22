@@ -1,9 +1,11 @@
 package zlib
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"os"
@@ -148,6 +150,39 @@ func StrFirstToUpper(str string) string {
 	return string(strArry)
 }
 
+//将字符串的首字母转大写
+func StrFirstToLower(str string) string {
+	if len(str) < 1 {
+		return str
+	}
+	strArry := []rune(str)
+	if strArry[0] >= 65 && strArry[0] <= 90  {
+		strArry[0] = strArry[0] + 32
+	}
+	return string(strArry)
+}
+
+func ReadLine(fileName string) ([]string,error){
+	f, err := os.Open(fileName)
+	if err != nil {
+		return nil,err
+	}
+	buf := bufio.NewReader(f)
+	var result []string
+	for {
+		line, err := buf.ReadString('\n')
+		line = strings.TrimSpace(line)
+		if err != nil {
+			if err == io.EOF { //读取结束，会报EOF
+				return result,nil
+			}
+			return nil,err
+		}
+		result = append(result,line)
+	}
+	return result,nil
+}
+
 func MapCovertStruct(inMap map[string]interface{},outStruct interface{})interface{}{
 	fmt.Printf("%+v",inMap)
 	fmt.Printf("%+v",outStruct)
@@ -254,10 +289,21 @@ func StringToFloat(str string)float32{
 	number  := float32(v1)
 	return number
 }
-var GoRoutineList = make( map[string]int )
-func AddRoutineList(name string){
-	GoRoutineList[name] = GetNowTimeSecondToInt()
-}
+//func ParseStuctDesc(mystruct interface{})map[string]string{
+//	//httpReqBusinessStruct := gamematch.HttpReqBusiness{}
+//	rs := make(map[string]string)
+//	types := reflect.TypeOf(&mystruct)
+//	for i:=0 ; i < types.Elem().NumField() ; i++{
+//		field := types.Elem().Field(i)
+//		tagName1 := field.Tag.Get("desc")
+//		rs[field.Name] = tagName1
+//	}
+//	return rs
+//}
+//var GoRoutineList = make( map[string]int )
+//func AddRoutineList(name string){
+//	GoRoutineList[name] = GetNowTimeSecondToInt()
+//}
 func GetLocalIp()(ip string,err error){
 	netInterfaces, err := net.Interfaces()
 	//MyPrint(netInterfaces, err)
@@ -301,6 +347,21 @@ func FindMinNumInArrFloat32(arr []float32  )float32{
 		}
 	}
 	return number
+}
+//从一个固定数字容器内，随机抽取出2个元素，且不重复
+func getSomeRandNumByContainer(){
+
+}
+//一个结构体转成字符串，一般用于输出调度
+func PrintStruct(mystruct interface{},separator string ){
+	t := reflect.TypeOf(mystruct)
+	v := reflect.ValueOf(mystruct)
+	//str := ""
+	for k := 0; k < t.NumField(); k++ {
+		//str += t.Field(k).Name + separator + string(v.Field(k).Interface())
+		//fmt.Printf("%s -- %v \n", t.Field(k).Name, v.Field(k).Interface())
+		MyPrint(t.Field(k).Name,separator,v.Field(k).Interface())
+	}
 }
 //4舍5入，保留2位小数
 //func round(x float32)string{

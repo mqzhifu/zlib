@@ -44,7 +44,8 @@ func CreateJwtToken(secretKey string,payload JwtDataPayload)string{
 func JwtGoCreateToken(secretKey string,payload JwtDataPayload)string{
 	type jwtCustomClaims struct {
 		jwt.StandardClaims
-		Id 			int
+		//Id 			int
+		Uid 		int
 		Expire 		int
 		ATime		int
 		AppId		int
@@ -58,11 +59,12 @@ func JwtGoCreateToken(secretKey string,payload JwtDataPayload)string{
 		//StandardClaims: jwt.StandardClaims{
 		//	ExpiresAt: int64(time.Now().Add(time.Hour * 72).Unix()),
 		//},
-		Id:payload.Id,
+		//Id:payload.Id,
+		Uid :payload.Uid,
 		Expire: payload.Expire,
 		ATime: payload.ATime,
 		AppId: payload.AppId,
-		Username: payload.Username,
+		//Username: payload.Username,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, _ := token.SignedString([]byte(secretKey))
@@ -104,9 +106,9 @@ func ParseJwtToken(secretKey string,tokenStr string)(data JwtData,err error){
 		return data,NewCoder(511,"check sign is err")
 	}
 	data = JwtData{
-		header: headerStruct,
-		payload: payloadStruct,
-		sign: sign,
+		Header: headerStruct,
+		Payload: payloadStruct,
+		Sign: sign,
 	}
 
 	return data,nil
@@ -176,9 +178,9 @@ func ParseToken(tokenSrt string, SecretKey []byte) (claims jwt.Claims, err error
 }
 
 type JwtData struct {
-	header 	JwtDataHeader
-	payload	JwtDataPayload
-	sign 	string
+	Header 	JwtDataHeader
+	Payload	JwtDataPayload
+	Sign 	string
 }
 
 type JwtDataHeader struct {
@@ -186,10 +188,17 @@ type JwtDataHeader struct {
 	Typ string `json:"typ"`
 }
 
+//type JwtDataPayload struct {
+//	Id 			int
+//	Expire 		int
+//	ATime		int
+//	AppId		int
+//	Username	string
+//}
+
 type JwtDataPayload struct {
-	Id 			int
+	Uid			int
 	Expire 		int
 	ATime		int
 	AppId		int
-	Username	string
 }

@@ -22,6 +22,7 @@ type ServiceOption struct {
 	Etcd 	*MyEtcd
 	Log 	*Log
 	Prefix	string
+	Goroutine *Goroutine
 }
 
 func NewService(serviceOption ServiceOption)*Service {
@@ -52,8 +53,9 @@ func (service *Service)RegThird( ){
 
 	service.list = serviceListMap
 	//service.option.Log.Debug(serviceListMap)
-	AddRoutineList("WatchThridService")
-	go service.WatchThridService()
+	//AddRoutineList("WatchThridService")
+	//go service.WatchThridService()
+	service.option.Goroutine.CreateExec(service,"WatchThridService")
 }
 func (service *Service)WatchThridService(){
 	watchChann := service.etcd.Watch(service.option.Prefix)

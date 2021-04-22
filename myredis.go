@@ -45,7 +45,7 @@ func NewRedisConnPool(redisOption RedisOption)(*MyRedis,error){
 				return nil, err
 			}
 			// 选择db
-			c.Do("SELECT", 0)
+			c.Do("SELECT", 1)
 			return c, nil
 		},
 		Wait: true,//如果获取不到，即阻塞
@@ -58,7 +58,7 @@ func NewRedisConnPool(redisOption RedisOption)(*MyRedis,error){
 }
 
 func  (myRedis *MyRedis)GetNewConnFromPool()redis.Conn{
-	myRedis.option.Log.Debug("redis :get new conn FD from pool.")
+	//myRedis.option.Log.Debug("redis :get new conn FD from pool.")
 	conn := myRedis.connPool.Get()
 	return conn
 }

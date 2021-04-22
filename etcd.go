@@ -11,8 +11,10 @@ import (
 	"time"
 )
 type ResponseMsgST struct {
-	Code 	int
+	Code	int
 	Msg 	interface{}
+	//Code 	int `json:"code"`
+	//Data 	interface{} `json:"data"`
 }
 
 type MyEtcd struct {
@@ -28,7 +30,15 @@ type EtcdOption struct {
 	LinkAddressList	[]string
 	Log *Log
 }
-
+type EtcdHttpResp struct {
+	Code 	int `json:"code"`
+	Data 	Etcdconfig `json:"data"`
+}
+type Etcdconfig struct {
+	Username	string `json:"username"`
+	Password	string	`json:"password"`
+	Hosts		[]string `json:"hosts"`
+}
 func NewMyEtcdSdk(etcdOption EtcdOption)(myEtcd *MyEtcd,errs error){
 	myEtcd = new (MyEtcd)
 	htmlContentJson ,errs := getEtcdHostPort(etcdOption)
@@ -39,22 +49,24 @@ func NewMyEtcdSdk(etcdOption EtcdOption)(myEtcd *MyEtcd,errs error){
 	if len(htmlContentJson) == 0{
 		return nil,errors.New("http request content empty! :" + errs.Error())
 	}
-
-	jsonStruct :=  ResponseMsgST{}
+	//MyPrint(string(htmlContentJson))
+	jsonStruct :=  EtcdHttpResp{}
 	errs = json.Unmarshal(htmlContentJson,&jsonStruct)
 	if errs != nil {
 		return nil,errors.New("http request err : Unmarshal " + errs.Error())
 	}
-	etcdConfig := strings.Split(jsonStruct.Msg.(string),",")
-	if len(etcdConfig) == 0 {
+	//etcdConfig := strings.Split(jsonStruct.Msg.(string),",")
+	if len(jsonStruct.Data.Hosts) == 0 {
 		return nil,errors.New("http request err : etcdConfig is empty ")
 	}
-	etcdOption.Log.Info("etcdConfig ip list : ", etcdConfig)
-	etcdOption.LinkAddressList = etcdConfig
+	etcdOption.Log.Info("etcdConfig ip list : ", jsonStruct.Data.Hosts)
+	etcdOption.LinkAddressList = jsonStruct.Data.Hosts
 
 	cli, errs := clientv3.New(clientv3.Config{
-		Endpoints:   etcdConfig,
+		Endpoints:  jsonStruct.Data.Hosts,
 		DialTimeout: 5 * time.Second,
+		Username: jsonStruct.Data.Username,
+		Password: jsonStruct.Data.Password,
 	})
 	//etcdOption.Log.Info("link etcd :",etcdConfig)
 	if errs != nil {
@@ -68,20 +80,9 @@ func NewMyEtcdSdk(etcdOption EtcdOption)(myEtcd *MyEtcd,errs error){
 }
 //寻找etcd host ip 列表
 func getEtcdHostPort(etcdOption EtcdOption)( []byte,error){
-	//configCenter = configcenter.NewConfiger(10,2,10,"ini")
-	//configCenter.StartLoading("/data/www/golang/src/configcenter")
-	//systemConfigStr,_ := configCenter.Search("system")
-
-	//systemConfig := make(map[string]map[string]map[string]interface{})
-	//json.Unmarshal([]byte(systemConfigStr),&systemConfig)
-	//fmt.Printf("%+v",systemConfig)
-	//zlib.ExitPrint(systemConfig,errs)
-	//etcdConfigStr := systemConfig["system"]["groups"]["list"]
-
 	//url := "http://39.106.65.76:1234/system/etcd/cluster1/list/"
-	etcdOption.Log.Info("getEtcdHostPort By ",etcdOption.FindEtcdUrl)
+	etcdOption.Log.Info("find etcd host:port  : ",etcdOption.FindEtcdUrl)
 	resp, errs := http.Get(etcdOption.FindEtcdUrl)
-	//etcdOption.Log.Info(" get etcd config ip:port list : ",etcdOption.FindEtcdUrl,errs)
 	if errs != nil{
 		return nil,errs
 	}
@@ -194,12 +195,6 @@ func (myEtcd *MyEtcd)GetOneValue(key string)string{
 
 	kvs := response.Kvs
 	value := string( kvs[0].Value )
-	//zlib.ExitPrint("aaaa",rs)
-	//zlib.MyPrint(rs)
-	//fmt.Println(kvs)
-	//fmt.Printf("%+v",oneMsg.Key)
-	//fmt.Printf("last value is :%s\r\n", string(kvs[0].Value))
-	//os.Exit(-333)
 	return value
 }
 func (myEtcd *MyEtcd)SetLog(log *Log){
@@ -257,7 +252,6 @@ func  (myEtcd *MyEtcd)iniAppConf() {
 		myEtcd.option.Log.Info("conf " , str,v)
 		confList[str] = v
 	}
-	//ExitPrint(confList)
 	myEtcd.AppConflist = confList
 }
 

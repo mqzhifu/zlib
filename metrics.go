@@ -1,5 +1,6 @@
 package zlib
 
+
 type Metrics struct {
 	Container map[string]int
 }
@@ -24,6 +25,10 @@ func (metrics *Metrics)SetNode(name string ,num int){
 
 func (metrics *Metrics)IncNode(name string  ){
 	metrics.Container[name] ++
+}
+
+func (metrics *Metrics)LessNode(name string  ){
+	metrics.Container[name] --
 }
 
 

@@ -59,6 +59,7 @@ const(
 
 type Log struct {
 	option LogOption
+	Op LogOption
 }
 
 type LogOption struct {
@@ -93,7 +94,7 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 	}
 
 	log.option = logOption
-
+	log.Op = logOption
 	if log.checkTargetIncludeByBit(OUT_TARGET_FILE){
 		if log.option.OutFileHashType == 0{//未开启hash
 			pathFile := log.GetPathFile()
