@@ -45,10 +45,10 @@ func JwtGoCreateToken(secretKey string,payload JwtDataPayload)string{
 	type jwtCustomClaims struct {
 		jwt.StandardClaims
 		//Id 			int
-		Uid 		int
-		Expire 		int
-		ATime		int
-		AppId		int
+		Uid 		int32
+		Expire 		int32
+		ATime		int32
+		AppId		int32
 		Username	string
 		// 追加自己需要的信息
 		//Uid   uint `json:"uid"`
@@ -197,8 +197,8 @@ type JwtDataHeader struct {
 //}
 
 type JwtDataPayload struct {
-	Uid			int
-	Expire 		int
-	ATime		int
-	AppId		int
+	Uid			int32
+	Expire 		int32
+	ATime		int32
+	AppId		int32
 }

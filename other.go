@@ -33,6 +33,10 @@ func GetRandIntNum(max int) int{
 	rand.Seed(time.Now().UnixNano())
 	return rand.Intn(max)
 }
+func GetRandInt32Num(max int32) int{
+	rand.Seed(time.Now().UnixNano())
+	return rand.Intn(int(max))
+}
 //获取一个随机整数 范围
 func GetRandIntNumRange(min int ,max int) int{
 	rand.Seed(time.Now().UnixNano())
@@ -182,7 +186,9 @@ func ReadLine(fileName string) ([]string,error){
 	}
 	return result,nil
 }
-
+func GetNowMillisecond()int64{
+	return time.Now().UnixNano() / 1e6
+}
 func MapCovertStruct(inMap map[string]interface{},outStruct interface{})interface{}{
 	fmt.Printf("%+v",inMap)
 	fmt.Printf("%+v",outStruct)
@@ -282,6 +288,10 @@ func Float64ToString(number float64,little int) string {
 
 func GetNowTimeSecondToInt()int{
 	return int( time.Now().Unix() )
+}
+
+func GetNowTimeSecondToInt64()int64{
+	return time.Now().Unix()
 }
 
 func StringToFloat(str string)float32{
