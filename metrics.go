@@ -15,6 +15,10 @@ func (metrics *Metrics) CreateOneNode(name string){
 	metrics.Container[name] = 0
 }
 
+func (metrics *Metrics) GetOneNode(name string)int{
+	return metrics.Container[name]
+}
+
 func (metrics *Metrics)PlusNode(name string ,num int){
 	metrics.Container[name] = metrics.Container[name] + num
 }
