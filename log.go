@@ -94,6 +94,7 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 
 	log = new(Log)
 	log.InChan = make(chan Msg,100)
+	log.CloseChan = make(chan int)
 	log.option = logOption
 
 	errs = log.checkOutFilePathPower(logOption.OutFilePath)
@@ -258,7 +259,7 @@ func  (log *Log)loopRealWriteMsg(){
 		}
 	}
 	end:
-		MyPrint("")
+		MyPrint("loopRealWriteMsg end")
 }
 
 func  (log *Log)Write(msg Msg){
