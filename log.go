@@ -55,11 +55,18 @@ const(
 	OUT_TARGET_NET_UDP = 2
 )
 
+type Msg struct {
+	LevelPrefix string
+	Content 	string
+	Header 		string
+}
 
 
 type Log struct {
 	option LogOption
 	Op LogOption
+	InChan 	chan Msg
+	CloseChan chan int
 }
 
 type LogOption struct {
@@ -86,6 +93,7 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 	}
 
 	log = new(Log)
+	log.InChan = make(chan Msg,100)
 	log.option = logOption
 
 	errs = log.checkOutFilePathPower(logOption.OutFilePath)
@@ -108,6 +116,7 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 	msg := "NewLogClass , OutFilePath : "+logOption.OutFilePath +" level : " + strconv.Itoa(logOption.Level) +" target : "+ strconv.Itoa(logOption.Target)
 	log.Debug(msg)
 
+	go log.loopRealWriteMsg()
 	return log,nil
 }
 
@@ -191,10 +200,12 @@ func (log *Log) CloseFileFd()error{
 func (log *Log)getHeaderContentStr()string{
 	//timeStr:=time.Now().Format("2006-01-02 15:04:05")
 	//unixstamp := GetNowTimeSecondToInt()
+	msTimeStr :=  GetNowMillisecond()
 	//uuid4 := getUuid4()
 	pid  := os.Getpid()
 	//str := timeStr + "[" + strconv.Itoa(pid) + "]"
-	str :=   "[" + strconv.Itoa(pid) + "]"
+	//str :=   "[" + strconv.Itoa(pid) + "]"
+	str := strconv.Itoa(int(msTimeStr)) + "[" + strconv.Itoa(pid) + "]"
 	return str
 }
 
@@ -223,21 +234,46 @@ func  (log *Log)Out(level int ,argcs ...interface{}){
 		content += " " + log.String(argc)
 	}
 
+	msg := Msg{
+		LevelPrefix: contentLevelPrefix,
+		Content: content,
+		Header: log.getHeaderContentStr(),
+	}
+
+	log.InChan <-msg
+}
+
+func  (log *Log)loopRealWriteMsg(){
+	MyPrint("loopRealWriteMsg start")
+	isBreak := 0
+	for{
+		select {
+			case msg := <- log.InChan:
+				log.Write(msg)
+			case <- log.CloseChan:
+				isBreak = 1
+		}
+		if isBreak == 1{
+			goto end
+		}
+	}
+	end:
+		MyPrint("")
+}
+
+func  (log *Log)Write(msg Msg){
 	if log.checkTargetIncludeByBit(OUT_TARGET_FILE){
-		log.OutFile(contentLevelPrefix + log.getHeaderContentStr() + content + "\n")
+		log.OutFile(msg.LevelPrefix + msg.Header + msg.Content + "\n")
 	}
 
 	if log.checkTargetIncludeByBit(OUT_TARGET_SC){
-		log.OutScreen(contentLevelPrefix,log.getHeaderContentStr(),content)
+		log.OutScreen(msg.LevelPrefix,msg.Header,msg.Content)
 	}
 
 	if log.checkTargetIncludeByBit(OUT_TARGET_NET){
 
 	}
-
-	//ExitPrint(-200)
 }
-
 //https://github.com/gogf/gf/tree/master/os/glog
 type apiString interface {
 	String() string
