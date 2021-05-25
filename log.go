@@ -65,8 +65,8 @@ type Msg struct {
 type Log struct {
 	option LogOption
 	Op LogOption
-	InChan 	chan Msg
-	CloseChan chan int
+	InChan 	chan Msg	`json:"-"`
+	CloseChan chan int	`json:"-"`
 }
 
 type LogOption struct {

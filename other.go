@@ -2,6 +2,7 @@ package zlib
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,9 +11,11 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 //这个函数只是懒......
@@ -153,6 +156,43 @@ func StrFirstToUpper(str string) string {
 	}
 	return string(strArry)
 }
+// 首字母小写
+func Lcfirst(str string) string {
+	for i, v := range str {
+		return string(unicode.ToLower(v)) + str[i+1:]
+	}
+	return ""
+}
+//func trunVarJson(marshalled []byte)string{
+//	var keyMatchRegex = regexp.MustCompile(`\"(\w+)\":`)
+//	//marshalled, err := json.Marshal(room)
+//	converted := keyMatchRegex.ReplaceAllFunc(
+//		marshalled,
+//		func(match []byte) []byte {
+//			matchStr := string(match)
+//			key := matchStr[1 : len(matchStr)-2]
+//			resKey := Lcfirst(Case2Camel(key))
+//			return []byte(`"` + resKey + `":`)
+//		},
+//	)
+//
+//	return string(converted)
+//}
+//驼峰式 转 下划线 式
+func CamelToSnake(marshalled []byte)[]byte{
+	var keyMatchRegex = regexp.MustCompile(`\"(\w+)\":`)
+	var wordBarrierRegex = regexp.MustCompile(`(\w)([A-Z])`)
+	converted := keyMatchRegex.ReplaceAllFunc(
+		marshalled,
+		func(match []byte) []byte {
+			return bytes.ToLower(wordBarrierRegex.ReplaceAll(
+				match,
+				[]byte(`${1}_${2}`),
+			))
+		},
+	)
+	return converted
+}
 
 //将字符串的首字母转大写
 func StrFirstToLower(str string) string {
@@ -185,6 +225,16 @@ func ReadLine(fileName string) ([]string,error){
 		result = append(result,line)
 	}
 	return result,nil
+}
+//BytesCombine 多个[]byte数组合并成一个[]byte
+func BytesCombine(pBytes ...[]byte) []byte {
+	len := len(pBytes)
+	s := make([][]byte, len)
+	for index := 0; index < len; index++ {
+		s[index] = pBytes[index]
+	}
+	sep := []byte("")
+	return bytes.Join(s, sep)
 }
 func GetNowMillisecond()int64{
 	return time.Now().UnixNano() / 1e6
