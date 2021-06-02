@@ -3,6 +3,7 @@ package zlib
 import (
 	"bufio"
 	"bytes"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -204,6 +205,30 @@ func StrFirstToLower(str string) string {
 		strArry[0] = strArry[0] + 32
 	}
 	return string(strArry)
+}
+func CmsArgs(data interface{})(argMap map[string]string,err error){
+	typeOfCmsArgs := reflect.TypeOf(data)
+	if len(os.Args) < typeOfCmsArgs.NumField() + 1{
+		errInfo := "os.Args len < "+ strconv.Itoa(typeOfCmsArgs.NumField()) + " , eg:"
+		for i:=0;i<typeOfCmsArgs.NumField();i++{
+			memVar := typeOfCmsArgs.Field(i)
+			errInfo += memVar.Tag.Get("err") + " ,"
+		}
+		return argMap,errors.New(errInfo)
+	}
+	cmsArg := make(map[string]string)
+	for i:=0;i<typeOfCmsArgs.NumField();i++{
+		memVar := typeOfCmsArgs.Field(i)
+		sqeNum := memVar.Tag.Get("seq")
+		num , _:=strconv.Atoi(sqeNum)
+		cmsArg[memVar.Name] = os.Args[num]
+	}
+	return cmsArg,nil
+}
+func Md5(text string) string {
+	hashMd5 := md5.New()
+	io.WriteString(hashMd5, text)
+	return fmt.Sprintf("%x", hashMd5.Sum(nil))
 }
 
 func ReadLine(fileName string) ([]string,error){
