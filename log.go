@@ -21,106 +21,143 @@ const (
 	LEVEL_CRITICAL	//64
 	LEVEL_WARNING	//128
 	LEVEL_NOTICE	//256
-)
-var levelContentPrefixes = map[int]string{
-	LEVEL_INFO: "INFO",
-	LEVEL_DEBUG: "DEBUG",
-	LEVEL_ERROR: "ERROR",
-	LEVEL_PANIC: "PANIC",
-	LEVEL_EMERGENCY: "EMERG",
-	LEVEL_ALERT: "ALERT",
-	LEVEL_CRITICAL: "CRITI",
-	LEVEL_WARNING: "WARNI",
-	LEVEL_NOTICE: "NOTIC",
-}
+	LEVEL_TRACE		//512
 
-const(
-	LEVEL_ALL = LEVEL_INFO | LEVEL_DEBUG | LEVEL_ERROR | LEVEL_PANIC | LEVEL_EMERGENCY |LEVEL_ALERT| LEVEL_CRITICAL |LEVEL_WARNING |LEVEL_NOTICE
-	LEVEL_DEV = LEVEL_INFO | LEVEL_DEBUG | LEVEL_ERROR | LEVEL_PANIC
-	LEVEL_ONLINE =  LEVEL_INFO | LEVEL_ERROR | LEVEL_PANIC
+	LEVEL_ALL 		= LEVEL_INFO | LEVEL_DEBUG | LEVEL_ERROR | LEVEL_PANIC | LEVEL_EMERGENCY |LEVEL_ALERT| LEVEL_CRITICAL |LEVEL_WARNING |LEVEL_NOTICE|LEVEL_TRACE
+	LEVEL_DEV 		= LEVEL_INFO | LEVEL_DEBUG | LEVEL_ERROR | LEVEL_PANIC | LEVEL_TRACE
+	LEVEL_ONLINE 	= LEVEL_INFO | LEVEL_ERROR | LEVEL_PANIC
+
+	FILE_HASH_NONE = 0
+	FILE_HASH_MONTH = 1
+	FILE_HASH_DAY = 2
+	FILE_HASH_HOUR = 3
+
+	CONTENT_TYPE_STRING = 0
+	CONTENT_TYPE_JSON = 1
+
 )
 
-const(
+const (
 	OUT_TARGET_SC = 	 1 << iota
 	OUT_TARGET_FILE
 	OUT_TARGET_NET
-)
 
-const(
 	OUT_TARGET_ALL = OUT_TARGET_SC|OUT_TARGET_FILE|OUT_TARGET_NET
-)
 
-const(
 	OUT_TARGET_NET_TCP  = 1
 	OUT_TARGET_NET_UDP = 2
 )
 
+var levelContentPrefixes = map[int]string{
+	LEVEL_INFO		: "INFO",
+	LEVEL_DEBUG		: "DEBUG",
+	LEVEL_ERROR		: "ERROR",
+	LEVEL_PANIC		: "PANIC",
+	LEVEL_EMERGENCY	: "EMERG",
+	LEVEL_ALERT		: "ALERT",
+	LEVEL_CRITICAL	: "CRITI",
+	LEVEL_WARNING	: "WARNI",
+	LEVEL_NOTICE	: "NOTIC",
+	LEVEL_TRACE		: "TRACE",
+}
+
 type Msg struct {
-	LevelPrefix string
-	Content 	string
-	Header 		string
+	AppId 		int		`json:"appId"`
+	ModuleId	int		`json:"moduleId"`
+	LevelPrefix string	`json:"levelPrefix"`
+	Content 	string	`json:"content"`
+	Header 		string	`json:"header"`
 }
 
 
 type Log struct {
-	option LogOption
-	Op LogOption
+	Option LogOption
 	InChan 	chan Msg	`json:"-"`
 	CloseChan chan int	`json:"-"`
 }
 
 type LogOption struct {
-	OutFilePath 	string
-	OutFileName 	string
-	OutFileHashType	int
-	OutFileFd		*os.File
-	Level 			int
-	Target 			int
+	AppId 			int
+	ModuleId		int
+	OutTarget 		int		//输出目标介质
+	OutContentType  int		//输出的内容格式类型
+	Level 			int		//当前类可以输出的等级类型，如DEBUG模式，所有日志类型均输出
+
+	OutFileBasePath 	string	//输出到文件的：基础目录
+	OutFilePath 		string	//输出到文件的：最终目录 = 基础目录 + 当前项目类型
+	OutFilePathFile 	string 	//最终真实输出的： 路径+文件名+扩展名
+	OutFileFileName 	string	//输出到文件的：文件名
+	OutFileFileExtName 	string	//输出到文件的：文件扩展名
+	OutFileHashType		int		//文件的保存形式，使用HASH模式
+
+	OutFileFileFd		*os.File	`json:"-"`
+
+
+
 }
 func NewLog( logOption LogOption)(log *Log ,errs error){
 	//MyPrint("New log class ,OutFilePath : ",logOption.OutFilePath , " level : ",logOption.Level ," target : ",logOption.Target)
-
-	if logOption.OutFilePath == ""{
-		return nil,errors.New(" OutFilePath is empty ")
-	}
 
 	if logOption.Level == 0{
 		return nil,errors.New(" level is empty ")
 	}
 
-	if logOption.Target == 0 {
+	if logOption.OutTarget == 0 {
 		return nil,errors.New(" target is empty ")
 	}
 
 	log = new(Log)
 	log.InChan = make(chan Msg,100)
 	log.CloseChan = make(chan int)
-	log.option = logOption
+	log.Option = logOption
 
-	errs = log.checkOutFilePathPower(logOption.OutFilePath)
-	if errs != nil{
-		return nil,errs
-	}
 
-	log.option = logOption
-	log.Op = logOption
 	if log.checkTargetIncludeByBit(OUT_TARGET_FILE){
-		if log.option.OutFileHashType == 0{//未开启hash
-			pathFile := log.GetPathFile()
-			fd, err  := os.OpenFile(pathFile, os.O_WRONLY | os.O_CREATE | os.O_APPEND , 0777)
-			if err != nil{
-				return nil,errors.New(" log out file , OpenFile :  " + err.Error())
-			}
-			log.option.OutFileFd = fd
+		if logOption.OutFilePath == ""{
+			return nil,errors.New(" OutFilePath is empty ")
+		}
+
+		if logOption.OutFileFileName == ""{
+			return nil,errors.New(" OutFilePath is empty ")
+		}
+
+		errs = log.checkOutFilePathPower(logOption.OutFilePath)
+		if errs != nil{
+			return nil,errs
+		}
+
+		//log.GetPathFile()
+		loutFilePathFileTmp := log.Option.OutFilePath + "/" + log.Option.OutFileFileName
+		switch log.Option.OutFileHashType {
+			case FILE_HASH_NONE:
+				break
+			case FILE_HASH_HOUR:
+				dateHour := GetNowDateHour()
+				loutFilePathFileTmp += dateHour
+			case FILE_HASH_DAY:
+				dateDay := GetNowDate()
+				loutFilePathFileTmp += dateDay
+			case FILE_HASH_MONTH:
+				date := GetNowDateMonth()
+				loutFilePathFileTmp += date
+		}
+		pathFile := loutFilePathFileTmp + "." + log.Option.OutFileFileExtName
+		fd, err  := os.OpenFile(pathFile, os.O_WRONLY | os.O_CREATE | os.O_APPEND , 0777)
+		if err != nil{
+			return log,errors.New(" log out file , OpenFile :  " + err.Error())
+		}
+		log.Option.OutFileFileFd = fd
+		log.Option.OutFilePathFile = pathFile
+		if logOption.OutFileFileExtName == ""{
+			log.Option.OutFileFileExtName = "log"
 		}
 	}
-	msg := "NewLogClass , OutFilePath : "+logOption.OutFilePath +" level : " + strconv.Itoa(logOption.Level) +" target : "+ strconv.Itoa(logOption.Target)
-	log.Debug(msg)
+
+	log.Debug(logOption)
 
 	go log.loopRealWriteMsg()
 	return log,nil
 }
-
 //permission
 func  (log *Log)  checkOutFilePathPower(path string)error{
 	if path == ""{
@@ -143,7 +180,9 @@ func  (log *Log)  checkOutFilePathPower(path string)error{
 	}
 	return nil
 }
-
+func  linkOutFilePath(basePath string,category string)string{
+	return basePath + "/" + category + "/"
+}
 func (log *Log) Info(content ...interface{}){
 	log.Out(LEVEL_INFO,content)
 }
@@ -164,6 +203,10 @@ func (log *Log) Warning(content ...interface{}){
 	log.Out(LEVEL_WARNING,content...)
 }
 
+func (log *Log) Alert(content ...interface{}){
+	log.Out(LEVEL_ALERT,content...)
+}
+
 func (log *Log) OutScreen(a ...interface{}){
 	if a[0] == "[INFO]"{
 		fmt.Printf("%c[1;40;33m%s%c[0m", 0x1B, a[0], 0x1B)
@@ -171,6 +214,8 @@ func (log *Log) OutScreen(a ...interface{}){
 		fmt.Printf("%c[1;40;31m%s%c[0m", 0x1B, a[0], 0x1B)
 	}else if a[0] == "[NOTIC]" {
 		fmt.Printf("%c[1;40;34m%s%c[0m", 0x1B, a[0], 0x1B)
+	}else if a[0] == "[ALERT]" {
+		fmt.Printf("%c[1;40;36m%s%c[0m", 0x1B, a[0], 0x1B)
 	}else if a[0] == "[WARNI]" {
 		fmt.Printf("%c[1;40;35m%s%c[0m", 0x1B, a[0], 0x1B)
 	}else{
@@ -180,11 +225,12 @@ func (log *Log) OutScreen(a ...interface{}){
 	newlist := append(a[:0], a[(0+1):]...)
 	fmt.Println(newlist...)
 }
-func (log *Log) GetPathFile()string{
-	return log.option.OutFilePath + "/" + log.option.OutFileName
-}
+//func (log *Log) GetPathFile()string{
+//	return log.option.OutFilePath + "/" + log.option.OutFileFileName
+//}
+
 func (log *Log) OutFile(content string){
-	_, err := io.WriteString(log.option.OutFileFd, content)
+	_, err := io.WriteString(log.Option.OutFileFileFd, content)
 	if err != nil{
 		log.Error("OutFile io.WriteString : ",err.Error())
 	}
@@ -194,7 +240,7 @@ func (log *Log) CloseFileFd()error{
 	if !log.checkTargetIncludeByBit(OUT_TARGET_FILE){
 		return errors.New("checkTargetIncludeByBit OUT_TARGET_FILE :false")
 	}
-	err := log.option.OutFileFd.Close()
+	err := log.Option.OutFileFileFd.Close()
 	return err
 }
 
@@ -211,7 +257,7 @@ func (log *Log)getHeaderContentStr()string{
 }
 
 func (log *Log) checkTargetIncludeByBit(flag int)bool{
-	if log.option.Target & flag == flag {
+	if log.Option.OutTarget & flag == flag {
 		return true
 	}
 	return false
@@ -219,7 +265,7 @@ func (log *Log) checkTargetIncludeByBit(flag int)bool{
 
 func (log *Log) checkLevelIncludeByBit(level int)bool{
 	//MyPrint(log.option.Level,level)
-	if log.option.Level & level == level {
+	if log.Option.Level & level == level {
 			return true
 	}
 	return false
@@ -243,6 +289,13 @@ func  (log *Log)Out(level int ,argcs ...interface{}){
 
 	log.InChan <-msg
 }
+func  (log *Log)SlaveOut(level int ,msg Msg){
+	contentLevelPrefix := "[" + levelContentPrefixes[level] +"]"
+	msg.LevelPrefix = contentLevelPrefix
+
+	log.InChan <-msg
+}
+
 
 func  (log *Log)loopRealWriteMsg(){
 	MyPrint("loopRealWriteMsg start")
@@ -259,12 +312,28 @@ func  (log *Log)loopRealWriteMsg(){
 		}
 	}
 	end:
-		MyPrint("loopRealWriteMsg end")
+		MyPrint("ctx.done() zlib.log - loopRealWriteMsg")
 }
 
 func  (log *Log)Write(msg Msg){
 	if log.checkTargetIncludeByBit(OUT_TARGET_FILE){
-		log.OutFile(msg.LevelPrefix + msg.Header + msg.Content + "\n")
+		if msg.AppId == 0{
+			msg.AppId = log.Option.AppId
+		}
+
+		if msg.ModuleId == 0{
+			msg.ModuleId = log.Option.ModuleId
+		}
+
+		str := ""
+		switch log.Option.OutContentType {
+			case CONTENT_TYPE_JSON:
+				strByte,_ := json.Marshal(&msg)
+				str = string(strByte)
+			case CONTENT_TYPE_STRING:
+				str = msg.LevelPrefix + msg.Header + msg.Content
+		}
+		log.OutFile(str  + "\n")
 	}
 
 	if log.checkTargetIncludeByBit(OUT_TARGET_SC){

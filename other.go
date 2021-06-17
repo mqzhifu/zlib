@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
@@ -179,6 +180,34 @@ func Lcfirst(str string) string {
 //
 //	return string(converted)
 //}
+func GetNowDateMonth()string{
+	//cstZone := time.FixedZone("CST", 8*3600)
+	//now := time.Now().In(cstZone)
+	//now := time.Now()
+	//str := strconv.Itoa(now.Year()) +  strconv.Itoa(int(now.Month())) + strconv.Itoa( now.Day())
+	str := time.Now().Format("200601")
+	return str
+}
+
+func GetNowDate()string{
+	//cstZone := time.FixedZone("CST", 8*3600)
+	//now := time.Now().In(cstZone)
+	//now := time.Now()
+	//str := strconv.Itoa(now.Year()) +  strconv.Itoa(int(now.Month())) + strconv.Itoa( now.Day())
+	str := time.Now().Format("20060102")
+	return str
+}
+func GetNowDateHour()string{
+	//ss := time.Now().Format("20060102")
+	//ExitPrint(ss)
+	//cstZone := time.FixedZone("CST", 8*3600)
+	//now := time.Now().In(cstZone)
+	//now := time.Now()
+	//date := GetNowDate()
+	//str := date + strconv.Itoa(now.Hour())
+	str := time.Now().Format("2006010215")
+	return str
+}
 //驼峰式 转 下划线 式
 func CamelToSnake(marshalled []byte)[]byte{
 	var keyMatchRegex = regexp.MustCompile(`\"(\w+)\":`)
@@ -422,7 +451,16 @@ func FindMaxNumInArrFloat32(arr []float32  )float32{
 	}
 	return number
 }
-
+//将一个完整的URL地址，以 <?>号分开，取<?>后面的参数
+func UriTurnPath (uri string)string{
+	n := strings.Index(uri,"?")
+	if  n ==  - 1{
+		return uri
+	}
+	uriByte := []byte(uri)
+	path := uriByte[0:n]
+	return string(path)
+}
 //在一个：一维数组中，找寻最小数
 func FindMinNumInArrFloat32(arr []float32  )float32{
 	number := arr[0]
@@ -448,6 +486,26 @@ func PrintStruct(mystruct interface{},separator string ){
 		MyPrint(t.Field(k).Name,separator,v.Field(k).Interface())
 	}
 }
+//遍历一个目录的所有文件列表，但 子目录不处理
+func GetFileListByDir(path string)[]string {
+	var fileList []string
+	fs,err := ioutil.ReadDir(path)
+	if err != nil{
+		MyPrint("GetFileListByDir err:",err.Error())
+		return fileList
+	}
+	for _,file:=range fs{
+		if file.IsDir(){
+			//fmt.Println(path+file.Name())
+			//GetFileListByDir(path+file.Name()+"/")
+		}else{
+			//fmt.Println(path+file.Name())
+			fileList = append(fileList,file.Name())
+		}
+	}
+	return fileList
+}
+
 //4舍5入，保留2位小数
 //func round(x float32)string{
 //	numberStr := FloatToString(x,4)
