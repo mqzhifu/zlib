@@ -27,6 +27,14 @@ func MyPrint(a ...interface{}) (n int, err error) {
 	}
 	return
 }
+
+func PanicPrint(a ...interface{})   {
+	if LogLevelFlag == LOG_LEVEL_DEBUG{
+		fmt.Println(a)
+	}
+	panic(a[0])
+}
+
 //debug 调试使用
 func ExitPrint(a ...interface{})   {
 	fmt.Println(a)

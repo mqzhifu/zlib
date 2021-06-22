@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"time"
 )
 
 const (
@@ -107,7 +108,7 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 	}
 
 	log = new(Log)
-	log.InChan = make(chan Msg,100)
+	log.InChan = make(chan Msg,10000)
 	log.CloseChan = make(chan int)
 	log.Option = logOption
 
@@ -207,6 +208,10 @@ func (log *Log) Alert(content ...interface{}){
 	log.Out(LEVEL_ALERT,content...)
 }
 
+func (log *Log) Panic(content ...interface{}){
+	log.Out(LEVEL_PANIC,content...)
+}
+
 func (log *Log) OutScreen(a ...interface{}){
 	if a[0] == "[INFO]"{
 		fmt.Printf("%c[1;40;33m%s%c[0m", 0x1B, a[0], 0x1B)
@@ -218,6 +223,8 @@ func (log *Log) OutScreen(a ...interface{}){
 		fmt.Printf("%c[1;40;36m%s%c[0m", 0x1B, a[0], 0x1B)
 	}else if a[0] == "[WARNI]" {
 		fmt.Printf("%c[1;40;35m%s%c[0m", 0x1B, a[0], 0x1B)
+	}else if a[0] == "[PANIC]" {
+		fmt.Printf("%c[1;40;41m%s%c[0m", 0x1B, a[0], 0x1B)
 	}else{
 		fmt.Printf("%c[1;40;32m%s%c[0m", 0x1B, a[0], 0x1B)
 	}
@@ -245,14 +252,14 @@ func (log *Log) CloseFileFd()error{
 }
 
 func (log *Log)getHeaderContentStr()string{
-	//timeStr:=time.Now().Format("2006-01-02 15:04:05")
+	timeStr:=time.Now().Format("2006-01-02 15:04:05")
 	//unixstamp := GetNowTimeSecondToInt()
-	msTimeStr :=  GetNowMillisecond()
+	//msTimeStr :=  GetNowMillisecond()
 	//uuid4 := getUuid4()
 	pid  := os.Getpid()
-	//str := timeStr + "[" + strconv.Itoa(pid) + "]"
+	str := timeStr + "[" + strconv.Itoa(pid) + "]"
 	//str :=   "[" + strconv.Itoa(pid) + "]"
-	str := strconv.Itoa(int(msTimeStr)) + "[" + strconv.Itoa(pid) + "]"
+	//str := strconv.Itoa(int(msTimeStr)) + "[" + strconv.Itoa(pid) + "]"
 	return str
 }
 
@@ -313,6 +320,7 @@ func  (log *Log)loopRealWriteMsg(){
 	}
 	end:
 		MyPrint("ctx.done() zlib.log - loopRealWriteMsg")
+		log.CloseFileFd()
 }
 
 func  (log *Log)Write(msg Msg){
