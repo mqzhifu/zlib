@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go.etcd.io/etcd/clientv3"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -12,8 +13,19 @@ import (
 	"time"
 )
 
+type DynamicService struct {
+	Name 	string
+	Value 	string
+	cancelFunc 	context.CancelFunc
+	cancelCtx context.Context
+	LeaseGrantId clientv3.LeaseID
+	Lease clientv3.Lease
+}
+
 type Service struct {
 	list map[string][]string	//可用服务列表
+	selfList map[string]DynamicService //自己注册的服务列表
+	watchList []context.CancelFunc
 	etcd 	*MyEtcd
 	option ServiceOption
 }
@@ -23,6 +35,7 @@ type ServiceOption struct {
 	Log 	*Log
 	Prefix	string
 	Goroutine *Goroutine
+	TestHttpGamematchPushReceiveHsot string
 }
 
 func NewService(serviceOption ServiceOption)*Service {
@@ -30,13 +43,18 @@ func NewService(serviceOption ServiceOption)*Service {
 
 	service.etcd = serviceOption.Etcd
 	service.option = serviceOption
-	service.RegThird()
+	service.selfList = make(map[string]DynamicService)
+	service.ReadAdnRegThird()
 	return service
 }
 //从配置中心读取：3方可用服务列表,注册到内存中
-func (service *Service)RegThird( ){
+func (service *Service)ReadAdnRegThird( ){
 	//从etcd 中读取，已注册的服务
-	allServiceList := service.etcd.GetListByPrefix(service.option.Prefix)
+	allServiceList,err := service.etcd.GetListByPrefix(service.option.Prefix)
+	if err != nil{
+		service.option.Log.Error("ReadAdnRegThird err:",err.Error())
+		return
+	}
 	if len(allServiceList) == 0{
 		service.option.Log.Notice( " allServiceList is empty !")
 		return
@@ -54,11 +72,14 @@ func (service *Service)RegThird( ){
 	service.list = serviceListMap
 	//service.option.Log.Debug(serviceListMap)
 	//AddRoutineList("WatchThridService")
-	//go service.WatchThridService()
-	service.option.Goroutine.CreateExec(service,"WatchThridService")
+	go service.WatchThridService()
+	//service.option.Goroutine.CreateExec(service,"WatchThridService")
 }
+//设定一个监听器，用于监听；3方服务，一但出现变化通知上方
 func (service *Service)WatchThridService(){
-	watchChann := service.etcd.Watch(service.option.Prefix)
+	ctx,cancelFunc := context.WithCancel(context.Background())
+	watchChann := service.etcd.Watch(ctx,service.option.Prefix)
+	service.watchList = append(service.watchList,cancelFunc)
 	prefix := "third service watching receive , "
 	//service.option.Log.Notice(prefix , " , new key : ",service.option.Prefix)
 	//watchChann := myetcd.Watch("/testmatch")
@@ -82,49 +103,93 @@ func (service *Service)WatchThridService(){
 	}
 }
 //注册自己的服务
-func (service *Service)RegOne(serviceName string,ipPort string){
-	now := GetNowTimeSecondToInt()
-	putResponse,err := service.etcd.PutOne( service.option.Prefix +"/"+serviceName +"/"+ipPort , strconv.Itoa(now))
+//func (service *Service)RegOne(serviceName string,ipPort string){
+//	now := GetNowTimeSecondToInt()
+//	putResponse,err := service.etcd.PutOne( service.option.Prefix +"/"+serviceName +"/"+ipPort , strconv.Itoa(now))
+//	if err != nil{
+//		ExitPrint("service.etcd.PutOne err ",err.Error())
+//	}
+//	service.selfList[serviceName] = ipPort
+//	service.option.Log.Info("etcd put one ",putResponse.Header)
+//}
+//删除自己的服务
+func (service *Service)DelOne(serviceName string,ipPort string){
+	//now := GetNowTimeSecondToInt()
+	//putResponse,err := service.etcd.PutOne( service.option.Prefix +"/"+serviceName +"/"+ipPort , strconv.Itoa(now))
+	name := service.option.Prefix +"/"+serviceName
+	err := service.etcd.DelOne(name)
 	if err != nil{
 		ExitPrint("service.etcd.PutOne err ",err.Error())
 	}
-	service.option.Log.Info("etcd put one ",putResponse.Header)
+	service.option.Log.Info("etcd DelOne :",err)
 }
-
+//通过ETCD可以获取到服务的IP list ，这里是负载，决定 用哪 个IP
 func (service *Service)balanceHost(list []string)string{
 	return list[0]
 }
-//注册自己的服务
+//动态（租约）注册一个服务，一但服务停止该服务自动取消
 func (service *Service)RegOneDynamic(serviceName string,ipPort string)error{
-	ctx,_  := context.WithCancel(context.Background())
-	leaseGrantId ,err := service.etcd.NewLeaseGrand(ctx,60,1)
+	ctx,cancelFunc  := context.WithCancel(context.Background())
+	lease,leaseGrantId ,err := service.etcd.NewLeaseGrand(ctx,60,1)
 	//service.option.Log.Debug("leaseGrantId : ",leaseGrantId ,err)
 	if err != nil{
-		//cancel()
+		cancelFunc()
 		return err
 	}
 	now := GetNowTimeSecondToInt()
 	//putResponse,err := service.etcd.PutOne( service.option.Prefix +"/"+serviceName +"/"+ipPort , strconv.Itoa(now))
 	key := service.option.Prefix +"/"+serviceName +"/"+ipPort
 	val := strconv.Itoa(now)
-	putResponse,err := service.etcd.putLease(ctx,leaseGrantId,key,val)
+	_,err = service.etcd.putLease(ctx,leaseGrantId,key,val)
 	if err != nil{
-		ExitPrint("service.etcd.PutOne err ",err.Error(),putResponse)
+		cancelFunc()
+		return errors.New("service.etcd.PutOne err :" + err.Error())
 	}
 
+	dynamicService := DynamicService{
+		 cancelFunc:cancelFunc,
+		 cancelCtx :ctx,
+		 Name: serviceName,
+		 Value: ipPort,
+		 LeaseGrantId : leaseGrantId,
+		 Lease:lease,
+	}
+	service.selfList[serviceName] = dynamicService
 	return nil
 }
+func (service *Service)Shutdown( ){
+	service.option.Log.Notice("service Shutdown:")
+	if len(service.selfList ) >=0  {
+		for _,dynamicService :=range service.selfList{
+			service.option.Log.Info("service cancelFunc :",dynamicService.Name)
+			//dynamicService.cancelFunc()
+			dynamicService.Lease.Revoke(dynamicService.cancelCtx,dynamicService.LeaseGrantId)
+		}
+	}else{
+		service.option.Log.Notice( "service.selfList  <= 0")
+	}
 
+	if len(service.watchList ) >=0  {
+		for _,cancelFunc :=range service.watchList{
+			cancelFunc()
+		}
+	}else{
+		service.option.Log.Notice( "service.watchList  <= 0")
+	}
+	service.option.Log.Alert("service shutdown.")
 
+}
+//给一个服务，发送一条http消息
 func (service *Service)HttpPost(serviceName string,uri string,data interface{}) (responseMsgST ResponseMsgST,errs error){
+	//先从池中找到该服务
 	serviceIpList ,ok := service.list[serviceName]
 	if !ok {
 		return responseMsgST,errors.New(serviceName + " 不存在 map 中 ")
 	}
+	//找一个该服务下的一个IP地址
 	serviceHost := service.balanceHost(serviceIpList)
+	serviceHost = service.option.TestHttpGamematchPushReceiveHsot
 	url := "http://"+serviceHost + "/" + uri
-	//url := "http://192.168.31.46:8080/"+uri
-	//ExitPrint(url)
 	service.option.Log.Debug("HttpPost",serviceName,serviceHost,uri,url)
 	jsonStr, _ := json.Marshal(data)
 	service.option.Log.Debug("jsonStr:",jsonStr)

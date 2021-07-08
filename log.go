@@ -305,7 +305,7 @@ func  (log *Log)SlaveOut(level int ,msg Msg){
 
 
 func  (log *Log)loopRealWriteMsg(){
-	MyPrint("loopRealWriteMsg start")
+	MyPrint("zlog : loopRealWriteMsg start")
 	isBreak := 0
 	for{
 		select {

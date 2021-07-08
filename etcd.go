@@ -41,34 +41,21 @@ type Etcdconfig struct {
 }
 func NewMyEtcdSdk(etcdOption EtcdOption)(myEtcd *MyEtcd,errs error){
 	myEtcd = new (MyEtcd)
-	htmlContentJson ,errs := getEtcdHostPort(etcdOption)
+	//获取etcd 服务器配置信息
+	jsonStruct ,errs := getEtcdHostPort(etcdOption)
 	if errs != nil {
 		return nil,errors.New("http request err :" + errs.Error())
 	}
-
-	if len(htmlContentJson) == 0{
-		return nil,errors.New("http request content empty! :" + errs.Error())
-	}
-	//MyPrint(string(htmlContentJson))
-	jsonStruct :=  EtcdHttpResp{}
-	errs = json.Unmarshal(htmlContentJson,&jsonStruct)
-	if errs != nil {
-		return nil,errors.New("http request err : Unmarshal " + errs.Error())
-	}
-	//etcdConfig := strings.Split(jsonStruct.Msg.(string),",")
-	if len(jsonStruct.Data.Hosts) == 0 {
-		return nil,errors.New("http request err : etcdConfig is empty ")
-	}
 	etcdOption.Log.Info("etcdConfig ip list : ", jsonStruct.Data.Hosts)
 	etcdOption.LinkAddressList = jsonStruct.Data.Hosts
-
-	cli, errs := clientv3.New(clientv3.Config{
+	//开启建立连接
+	clientv3Config  := clientv3.Config{
 		Endpoints:  jsonStruct.Data.Hosts,
 		DialTimeout: 5 * time.Second,
 		Username: jsonStruct.Data.Username,
 		Password: jsonStruct.Data.Password,
-	})
-	//etcdOption.Log.Info("link etcd :",etcdConfig)
+	}
+	cli, errs := clientv3.New(clientv3Config)
 	if errs != nil {
 		return nil,errors.New("clientv3.New error :  " + errs.Error())
 	}
@@ -78,38 +65,56 @@ func NewMyEtcdSdk(etcdOption EtcdOption)(myEtcd *MyEtcd,errs error){
 	myEtcd.iniAppConf()
 	return myEtcd,nil
 }
+func (myEtcd *MyEtcd)Shutdown(){
+	myEtcd.cli.Close()
+	myEtcd.option.Log.Alert("etcd shutdown.")
+}
 //寻找etcd host ip 列表
-func getEtcdHostPort(etcdOption EtcdOption)( []byte,error){
-	//url := "http://39.106.65.76:1234/system/etcd/cluster1/list/"
-	etcdOption.Log.Info("find etcd host:port  : ",etcdOption.FindEtcdUrl)
+func getEtcdHostPort(etcdOption EtcdOption)( etcdHttpResp EtcdHttpResp,err error){
+	etcdOption.Log.Info("http.get remote etcd host:port  : ",etcdOption.FindEtcdUrl)
 	resp, errs := http.Get(etcdOption.FindEtcdUrl)
 	if errs != nil{
-		return nil,errs
+		return etcdHttpResp,errs
 	}
 	htmlContentJson,_ := ioutil.ReadAll(resp.Body)
-	return htmlContentJson,errs
+	//解析请求回来的配置信息
+	if len(htmlContentJson) == 0{
+		return etcdHttpResp,errors.New("http request content empty! :" + errs.Error())
+	}
+	//jsonStruct :=  EtcdHttpResp{}
+	errs = json.Unmarshal(htmlContentJson,&etcdHttpResp)
+	if errs != nil {
+		return etcdHttpResp,errors.New("http request err : Unmarshal " + errs.Error())
+	}
+	//etcdConfig := strings.Split(jsonStruct.Msg.(string),",")
+	if len(etcdHttpResp.Data.Hosts) == 0 {
+		return etcdHttpResp,errors.New("http request err : etcdConfig is empty ")
+	}
+	return etcdHttpResp,errs
 }
 //申请一个X秒TTL的租约
-func (myEtcd *MyEtcd)NewLeaseGrand(ctx context.Context ,ttl int64,autoKeepAlive int)(clientv3.LeaseID,error){
+//autoKeepAlive:一个租约到时候后，是否自动继续续租
+func (myEtcd *MyEtcd)NewLeaseGrand(ctx context.Context ,ttl int64,autoKeepAlive int)(l clientv3.Lease,leaseGrantId clientv3.LeaseID,e error){
 	//创建一个租约实体
 	lease :=  clientv3.NewLease(myEtcd.cli)
-	//申请一个60秒的 租约 实体
+	//授权实体：申请一个60秒的 租约 实体
 	leaseGrant, err := lease.Grant(ctx, ttl)
 	if  err != nil {
 		myEtcd.option.Log.Error("lease.Grant err :",err.Error())
-		return 0,err
+		return l,leaseGrantId,err
 	}
 	if autoKeepAlive == 1{
 		leaseKeepAliveResponse,err :=lease.KeepAlive(ctx,leaseGrant.ID)
 		if err !=nil{
 			myEtcd.option.Log.Error("lease.KeepAlive err :",err.Error(),leaseKeepAliveResponse)
-			return 0,err
+			return l,leaseGrantId,err
 		}
 	}
 	myEtcd.option.Log.Info("create New Lease and Grand ,  ttl :",ttl, " id : ",leaseGrant.ID)
-	return leaseGrant.ID,nil
+	return lease,leaseGrant.ID,nil
 }
-//往一个租约里写入内容
+
+//往一个租约里写入内容，跟NewLeaseGrand联合使用的
 func (myEtcd *MyEtcd)putLease(ctx context.Context,leaseId clientv3.LeaseID,k string,v string)(putResponse *clientv3.PutResponse,err error){
 	//创建一个KV 容器
 	kv := clientv3.KV(myEtcd.cli)
@@ -122,8 +127,8 @@ func (myEtcd *MyEtcd)putLease(ctx context.Context,leaseId clientv3.LeaseID,k str
 
 	return putResponse,nil
 }
-
-func (myEtcd *MyEtcd)GetListByPrefix(key string)(list map[string]string){
+//根据前缀，获取该前缀下面的所有路径信息
+func (myEtcd *MyEtcd)GetListByPrefix(key string)(list map[string]string,err error){
 	//myEtcd.option.Log.Info(" etcd GetListByPrefix , ",key ," : ")
 	rootContext := context.Background()
 	kvc := clientv3.NewKV(myEtcd.cli)
@@ -134,11 +139,11 @@ func (myEtcd *MyEtcd)GetListByPrefix(key string)(list map[string]string){
 	//myEtcd.option.Log.Debug(" ",response, err)
 	if err != nil {
 		myEtcd.option.Log.Notice("client Get err : ",err.Error())
-		return list
+		return list,errors.New("client Get err : "+err.Error())
 	}
 
 	if response.Count == 0{
-		return list
+		return list,nil
 	}
 
 	kvs := response.Kvs
@@ -148,58 +153,60 @@ func (myEtcd *MyEtcd)GetListByPrefix(key string)(list map[string]string){
 		list[string(v.Key)] =  string(v.Value)
 	}
 	//MyPrint(list)
-	return list
+	return list,nil
 }
 
-func (myEtcd *MyEtcd)GetListValue(key string)(list []string){
-	myEtcd.option.Log.Info(" etcd GetOne , ",key ," : ")
-	rootContext := context.Background()
-	kvc := clientv3.NewKV(myEtcd.cli)
-	//获取值
-	ctx, cancelFunc := context.WithTimeout(rootContext, time.Duration(2)*time.Second)
-	response, err := kvc.Get(ctx, key)
-	myEtcd.option.Log.Debug(" ",response, err)
-	if err != nil {
-		myEtcd.option.Log.Error("Get",err)
-	}
-	cancelFunc()
+//func (myEtcd *MyEtcd)GetListValue(key string)(list []string){
+//	myEtcd.option.Log.Info(" etcd GetOne , ",key ," : ")
+//	rootContext := context.Background()
+//	kvc := clientv3.NewKV(myEtcd.cli)
+//	//获取值
+//	ctx, cancelFunc := context.WithTimeout(rootContext, time.Duration(2)*time.Second)
+//	response, err := kvc.Get(ctx, key)
+//	myEtcd.option.Log.Debug(" ",response, err)
+//	if err != nil {
+//		myEtcd.option.Log.Error("Get",err)
+//	}
+//	cancelFunc()
+//
+//	if response.Count == 0{
+//		return nil
+//	}
+//
+//	kvs := response.Kvs
+//
+//	for _,v := range kvs{
+//		list = append(list,string(v.Value))
+//	}
+//	return list
+//}
+//
+//func (myEtcd *MyEtcd)GetOneValue(key string)string{
+//	myEtcd.option.Log.Info(" etcd GetOne , ",key ," : ")
+//	rootContext := context.Background()
+//	kvc := clientv3.NewKV(myEtcd.cli)
+//	//获取值
+//	ctx, cancelFunc := context.WithTimeout(rootContext, time.Duration(2)*time.Second)
+//	response, err := kvc.Get(ctx, key)
+//	myEtcd.option.Log.Debug(" ",response, err)
+//	if err != nil {
+//		myEtcd.option.Log.Error("Get",err)
+//	}
+//	cancelFunc()
+//
+//	if response.Count == 0{
+//		return ""
+//	}
+//
+//	kvs := response.Kvs
+//	value := string( kvs[0].Value )
+//	return value
+//}
+//
+//func (myEtcd *MyEtcd)SetLog(log *Log){
+//	myEtcd.option.Log = log
+//}
 
-	if response.Count == 0{
-		return nil
-	}
-
-	kvs := response.Kvs
-
-	for _,v := range kvs{
-		list = append(list,string(v.Value))
-	}
-	return list
-}
-
-func (myEtcd *MyEtcd)GetOneValue(key string)string{
-	myEtcd.option.Log.Info(" etcd GetOne , ",key ," : ")
-	rootContext := context.Background()
-	kvc := clientv3.NewKV(myEtcd.cli)
-	//获取值
-	ctx, cancelFunc := context.WithTimeout(rootContext, time.Duration(2)*time.Second)
-	response, err := kvc.Get(ctx, key)
-	myEtcd.option.Log.Debug(" ",response, err)
-	if err != nil {
-		myEtcd.option.Log.Error("Get",err)
-	}
-	cancelFunc()
-
-	if response.Count == 0{
-		return ""
-	}
-
-	kvs := response.Kvs
-	value := string( kvs[0].Value )
-	return value
-}
-func (myEtcd *MyEtcd)SetLog(log *Log){
-	myEtcd.option.Log = log
-}
 func (myEtcd *MyEtcd) PutOne(k string, v string)(putResponse *clientv3.PutResponse,errs error){
 	myEtcd.option.Log.Info(" etcd PutOne: ",k , v)
 	rootContext := context.Background()
@@ -226,9 +233,9 @@ func (myEtcd *MyEtcd) PutOne(k string, v string)(putResponse *clientv3.PutRespon
 	return putResponse, errs
 }
 
-func  (myEtcd *MyEtcd)Watch(key string) <-chan clientv3.WatchResponse {
+func  (myEtcd *MyEtcd)Watch(ctx context.Context,key string) <-chan clientv3.WatchResponse {
 	myEtcd.option.Log.Notice("etcd create new watch :",key)
-	watchChan  := myEtcd.cli.Watch(context.TODO(),key,clientv3.WithPrefix())
+	watchChan  := myEtcd.cli.Watch(ctx,key,clientv3.WithPrefix())
 	//MyPrint("return watchChan")
 	return watchChan
 	//rch := cli.Watch(context.Background(), "/xi")
@@ -238,11 +245,17 @@ func  (myEtcd *MyEtcd)getConfRootPrefix()string{
 	rootPath := "/"+myEtcd.option.AppName + "/"+  myEtcd.option.AppENV + "/"
 	return rootPath
 }
-
+//初始化，一个项目下的，所有配置文件（ 路径：/项目名/环境名/）
+//减少请求etcd次数
 func  (myEtcd *MyEtcd)iniAppConf() {
 	myEtcd.option.Log.Info("etcd iniAppConf : ")
-	confListEtcd := myEtcd.GetListByPrefix(myEtcd.getConfRootPrefix())
+	confListEtcd,err := myEtcd.GetListByPrefix(myEtcd.getConfRootPrefix())
+	if err != nil{
+		myEtcd.option.Log.Error("iniAppConf err:",err.Error())
+		return
+	}
 	if len(confListEtcd) == 0{
+		myEtcd.option.Log.Notice("iniAppConf confListEtcd is empty!")
 		return
 	}
 	confList := make(map[string]string)
@@ -253,6 +266,23 @@ func  (myEtcd *MyEtcd)iniAppConf() {
 		confList[str] = v
 	}
 	myEtcd.AppConflist = confList
+}
+func  (myEtcd *MyEtcd)DelOne(key string)error{
+	_, err := myEtcd.cli.Delete(context.TODO(),key)
+	if err != nil{
+		myEtcd.option.Log.Error(" etcd del one err:",err)
+	}
+	return err
+}
+
+func  (myEtcd *MyEtcd)GetLinkAddressList()([]string){
+	val := myEtcd.option.LinkAddressList
+	return val
+}
+
+func  (myEtcd *MyEtcd)GetAppConf()(map[string]string){
+	val := myEtcd.AppConflist
+	return val
 }
 
 func  (myEtcd *MyEtcd)GetAppConfByKey(key string)(str string){

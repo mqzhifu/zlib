@@ -36,7 +36,7 @@ func NewRedisConnPool(redisOption RedisOption)(*MyRedis,error){
 	redisOption.Log.Info("NewRedisConn : ",redisOption.Host,redisOption.Port)
 	myRedisPool  := &redis.Pool{
 		// 从配置文件获取maxidle以及maxactive，取不到则用后面的默认值
-		MaxIdle:     2,
+		MaxIdle:     180,
 		MaxActive:   200,
 		IdleTimeout: 180 * time.Second,
 		Dial: func() (redis.Conn, error) {
@@ -56,7 +56,10 @@ func NewRedisConnPool(redisOption RedisOption)(*MyRedis,error){
 	_,err :=myRedis.RedisDo("ping")
 	return myRedis,err
 }
-
+func  (myRedis *MyRedis)Shutdown(){
+	//myRedis.connPool.Close()
+	myRedis.option.Log.Alert("redis shutdown.")
+}
 func  (myRedis *MyRedis)GetNewConnFromPool()redis.Conn{
 	//myRedis.option.Log.Debug("redis :get new conn FD from pool.")
 	conn := myRedis.connPool.Get()
@@ -64,30 +67,30 @@ func  (myRedis *MyRedis)GetNewConnFromPool()redis.Conn{
 }
 //指定一个 sock fd
 func  (myRedis *MyRedis)ConnDo(conn redis.Conn,commandName string, args ...interface{})(reply interface{}, error error){
-	myRedis.option.Log.Debug("[redis]connDo  :",commandName,args)
+	//myRedis.option.Log.Debug("[redis]connDo  :",commandName,args)
 	res,error :=conn.Do(commandName,args...)
 	if error != nil{
-		myRedis.option.Log.Notice("redis err :",error.Error())
+		myRedis.option.Log.Error("redis ConnDo err :",error.Error())
 		return nil, error
 	}
 	return res,error
 }
 func  (myRedis *MyRedis)Exec(conn redis.Conn)(reply interface{}, error error){
 	rs,err := myRedis.ConnDo(conn,"exec")
-	myRedis.option.Log.Info("redis : exec , rs : ",rs,"err:",err)
+	//myRedis.option.Log.Info("redis : exec , rs : ",rs,"err:",err)
 	if err != nil{
 		myRedis.option.Log.Error("transaction failed : ",err)
 	}
 	return rs,err
 }
 func  (myRedis *MyRedis)Multi(conn redis.Conn)(reply interface{}, error error){
-	myRedis.option.Log.Debug("[redis]Multi  ")
+	//myRedis.option.Log.Debug("[redis]Multi  ")
 	return myRedis.Send(conn,"Multi")
 }
 
 func  (myRedis *MyRedis)Send(conn redis.Conn,commandName string, args ...interface{})(reply interface{}, error error){
 	err := conn.Send(commandName,args...)
-	myRedis.option.Log.Debug("[redis]Send : ",commandName , " err : ",err)
+	myRedis.option.Log.Debug("[redis]Send : ",commandName , args," err : ",err)
 	return reply,err
 }
 
@@ -98,7 +101,7 @@ func  (myRedis *MyRedis)Send(conn redis.Conn,commandName string, args ...interfa
 
 
 func  (myRedis *MyRedis)RedisDo(commandName string, args ...interface{})(reply interface{}, error error){
-	myRedis.option.Log.Debug("[redis]redisDo init:",commandName,args)
+	//myRedis.option.Log.Debug("[redis]redisDo init:",commandName,args)
 	conn := myRedis.GetNewConnFromPool()
 	defer conn.Close()
 	res,error := conn.Do(commandName,args... )
