@@ -216,6 +216,23 @@ func GetNowDateHour()string{
 	str := time.Now().Format("2006010215")
 	return str
 }
+
+func GetDateHour(now int64)string{
+	//ss := time.Now().Format("20060102")
+	//ExitPrint(ss)
+	//cstZone := time.FixedZone("CST", 8*3600)
+	//now := time.Now().In(cstZone)
+	//now := time.Now()
+	//date := GetNowDate()
+	//str := date + strconv.Itoa(now.Hour())
+	tm := time.Unix(now, 0)
+	str := tm.Format("2006010215")
+	return str
+}
+
+
+
+
 //驼峰式 转 下划线 式
 func CamelToSnake(marshalled []byte)[]byte{
 	var keyMatchRegex = regexp.MustCompile(`\"(\w+)\":`)

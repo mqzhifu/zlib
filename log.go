@@ -92,7 +92,7 @@ type LogOption struct {
 	OutFileHashType		int		//文件的保存形式，使用HASH模式
 
 	OutFileFileFd		*os.File	`json:"-"`
-
+	OutFileFileFdOpenTime string
 
 
 }
@@ -112,45 +112,11 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 	log.CloseChan = make(chan int)
 	log.Option = logOption
 
-
+	//如果要输出到文件中，要做判断，并提前找到FD
 	if log.checkTargetIncludeByBit(OUT_TARGET_FILE){
-		if logOption.OutFilePath == ""{
-			return nil,errors.New(" OutFilePath is empty ")
-		}
-
-		if logOption.OutFileFileName == ""{
-			return nil,errors.New(" OutFilePath is empty ")
-		}
-
-		errs = log.checkOutFilePathPower(logOption.OutFilePath)
-		if errs != nil{
-			return nil,errs
-		}
-
-		//log.GetPathFile()
-		loutFilePathFileTmp := log.Option.OutFilePath + "/" + log.Option.OutFileFileName
-		switch log.Option.OutFileHashType {
-			case FILE_HASH_NONE:
-				break
-			case FILE_HASH_HOUR:
-				dateHour := GetNowDateHour()
-				loutFilePathFileTmp += dateHour
-			case FILE_HASH_DAY:
-				dateDay := GetNowDate()
-				loutFilePathFileTmp += dateDay
-			case FILE_HASH_MONTH:
-				date := GetNowDateMonth()
-				loutFilePathFileTmp += date
-		}
-		pathFile := loutFilePathFileTmp + "." + log.Option.OutFileFileExtName
-		fd, err  := os.OpenFile(pathFile, os.O_WRONLY | os.O_CREATE | os.O_APPEND , 0777)
+		err := log.OpenNewFd()
 		if err != nil{
-			return log,errors.New(" log out file , OpenFile :  " + err.Error())
-		}
-		log.Option.OutFileFileFd = fd
-		log.Option.OutFilePathFile = pathFile
-		if logOption.OutFileFileExtName == ""{
-			log.Option.OutFileFileExtName = "log"
+			return nil,err
 		}
 	}
 
@@ -159,6 +125,72 @@ func NewLog( logOption LogOption)(log *Log ,errs error){
 	go log.loopRealWriteMsg()
 	return log,nil
 }
+func  (log *Log)OpenNewFd( )(err error ){
+	if log.Option.OutFilePath == ""{
+		return errors.New(" OutFilePath is empty ")
+	}
+
+	if log.Option.OutFileFileName == ""{
+		return errors.New(" OutFilePath is empty ")
+	}
+
+	errs := log.checkOutFilePathPower(log.Option.OutFilePath)
+	if errs != nil{
+		return errs
+	}
+
+	//log.GetPathFile()
+	loutFilePathFileTmp := log.Option.OutFilePath + "/" + log.Option.OutFileFileName
+	switch log.Option.OutFileHashType {
+	case FILE_HASH_NONE:
+		break
+	case FILE_HASH_HOUR:
+		dateHour := GetNowDateHour()
+		log.Option.OutFileFileFdOpenTime = dateHour
+		loutFilePathFileTmp += dateHour
+	case FILE_HASH_DAY:
+		dateDay := GetNowDate()
+		log.Option.OutFileFileFdOpenTime = dateDay
+		loutFilePathFileTmp += dateDay
+	case FILE_HASH_MONTH:
+		date := GetNowDateMonth()
+		log.Option.OutFileFileFdOpenTime =date
+		loutFilePathFileTmp += date
+	}
+	pathFile := loutFilePathFileTmp + "." + log.Option.OutFileFileExtName
+	fd, err  := os.OpenFile(pathFile, os.O_WRONLY | os.O_CREATE | os.O_APPEND , 0777)
+	if err != nil{
+		return errors.New(" log out file , OpenFile :  " + err.Error())
+	}
+
+	log.Option.OutFileFileFd = fd
+	log.Option.OutFilePathFile = pathFile
+	if log.Option.OutFileFileExtName == ""{
+		log.Option.OutFileFileExtName = "log"
+	}
+
+	return nil
+}
+
+func  (log *Log)checkFileFdTimeout()bool{
+	timeStr := ""
+	switch log.Option.OutFileHashType {
+	case FILE_HASH_NONE:
+		return false
+	case FILE_HASH_HOUR:
+		timeStr = GetNowDateHour()
+	case FILE_HASH_DAY:
+		timeStr = GetNowDate()
+	case FILE_HASH_MONTH:
+		timeStr = GetNowDateMonth()
+	}
+	if timeStr == log.Option.OutFileFileFdOpenTime{
+		return false
+	}else{
+		return true
+	}
+}
+
 //permission
 func  (log *Log)  checkOutFilePathPower(path string)error{
 	if path == ""{
@@ -340,6 +372,9 @@ func  (log *Log)Write(msg Msg){
 				str = string(strByte)
 			case CONTENT_TYPE_STRING:
 				str = msg.LevelPrefix + msg.Header + msg.Content
+		}
+		if log.checkFileFdTimeout(){
+			log.OpenNewFd()
 		}
 		log.OutFile(str  + "\n")
 	}
